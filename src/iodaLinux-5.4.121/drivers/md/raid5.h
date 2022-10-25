@@ -503,7 +503,8 @@ static inline struct bio *r5_next_bio(struct bio *bio, sector_t sector)
  * and creating that much locking depth can cause
  * problems.
  */
-#define NR_STRIPE_HASH_LOCKS 8
+// #define NR_STRIPE_HASH_LOCKS 8
+#define NR_STRIPE_HASH_LOCKS 128
 #define STRIPE_HASH_LOCKS_MASK (NR_STRIPE_HASH_LOCKS - 1)
 
 struct r5worker {
