@@ -221,11 +221,6 @@ struct stripe_head {
 	int			cpu;
 	struct r5worker_group	*group;
 
-	/* Coperd: TIFA added */
-	ktime_t ts;
-	atomic_t in_gc_num;
-	unsigned long gc_flag;
-
 	struct stripe_head	*batch_head; /* protected by stripe lock */
 	spinlock_t		batch_lock; /* only header's lock is useful */
 	struct list_head	batch_list; /* protected by head's batch lock*/
@@ -263,12 +258,6 @@ struct stripe_head {
 		unsigned long	flags;
 		u32		log_checksum;
 		unsigned short	write_hint;
-		ktime_t		true_ts;
-		ktime_t		expected_ts;
-		ktime_t		max_true_ts;
-		ktime_t		sec_true_ts;
-		ktime_t		tifa_compute_ts;
-		atomic_t	in_gc_num;
 	} dev[1]; /* allocated with extra space depending of RAID geometry */
 };
 
@@ -283,15 +272,13 @@ struct stripe_head_state {
 	 * read all devices, just the replacement targets.
 	 */
 	int syncing, expanding, expanded, replacing;
-	int locked, uptodate, to_read, to_write, failed, written, in_gc_num;
+	int locked, uptodate, to_read, to_write, failed, written;
 	int to_fill, compute, req_compute, non_overwrite;
 	int injournal, just_cached;
 	int failed_num[2];
 	int p_failed, q_failed;
 	int dec_preread_active;
 	unsigned long ops_request;
-	int max_i, sec_i;
-	ktime_t *max_ts, *sec_ts, *max_true_ts, *sec_true_ts;
 
 	struct md_rdev *blocked_rdev;
 	int handle_bad_blocks;
@@ -347,13 +334,6 @@ enum r5dev_flags {
 				 * set, orig_page contains latest data in the
 				 * raid disk.
 				 */
-	/* Coperd: TIFA added */
-	R5_Complete,
-	R5_GCError,
-	R5_InGC,
-	R5_ReadGC,
-	R5_Readforwrite,
-	R5_Inflight,
 };
 
 /*
@@ -409,7 +389,6 @@ enum {
 				 * in conf->r5c_full_stripe_list)
 				 */
 	STRIPE_R5C_PREFLUSH,	/* need to flush journal device */
-	STRIPE_BLOCKED,
 };
 
 #define STRIPE_EXPAND_SYNC_FLAGS \
@@ -628,8 +607,6 @@ struct r5conf {
 	struct bio		*retry_read_aligned; /* currently retrying aligned bios   */
 	unsigned int		retry_read_offset; /* sector offset into retry_read_aligned */
 	struct bio		*retry_read_aligned_list; /* aligned bios retry list  */
-	struct bio		*urgent_bio;
-	struct bio		*urgent_bio_list;
 	atomic_t		preread_active_stripes; /* stripes with scheduled io */
 	atomic_t		active_aligned_reads;
 	atomic_t		pending_full_writes; /* full write backlog */
@@ -787,33 +764,4 @@ raid5_get_active_stripe(struct r5conf *conf, sector_t sector,
 			int previous, int noblock, int noquiesce);
 extern int raid5_calc_degraded(struct r5conf *conf);
 extern int r5c_journal_mode_set(struct mddev *mddev, int journal_mode);
-
-/* Coperd: TIFA related */
-ssize_t tifa_show_rdlat(struct mddev *mddev, char *page);
-ssize_t tifa_store_rdlat(struct mddev *mddev, const char *page, size_t len);
-extern struct md_sysfs_entry tifa_rdlat;
-
-extern u64 *rdlat_array;
-extern atomic_t rdlat_idx;
-
-extern int readPolicy;
-
-extern unsigned long long tifa_bio_ttl;		// Total number of bios sent in RAID
-extern unsigned long long tifa_bio_ret;		// Number of retry bios sent in RAID
-extern unsigned long long tifa_bio_rfw;		// Number of bios read for write
-extern unsigned long long tifa_bio_gct;		// Number of gct bios sent in RAID
-extern unsigned long long tifa_bio_gct_ret;	// Among retry bios, number of retry for gct
-extern unsigned long long tifa_bio_rfw_ret;	// Among retry bios, number of retry for rfw
-extern unsigned long long tifa_bio_com;		// Number of bios computed
-extern unsigned long long tifa_bio_gct_nor;	// Number of bios gct normal finished
-extern unsigned long long tifa_bio_gct_eio;	// Number of gct returned with eio
-extern unsigned long long tifa_bio_rfw_nor;	// Number of bios rfw normal finished
-extern unsigned long long tifa_bio_rfw_eio;	// Number of rfw returned with eio
-extern unsigned long long tifa_bio_stripe;	// Number of full stripe
-
-#define TIFA_POLICY_NORMAL	0 // default RAID through stripe
-#define TIFA_POLICY_EBUSY	1 // EBUSY
-#define TIFA_POLICY_GCT		2 // GCT
-#define TIFA_POLICY_IOD3	3 // IOD3: TW-only
-
 #endif

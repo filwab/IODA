@@ -45,7 +45,7 @@ static unsigned char shutdown_timeout = 5;
 module_param(shutdown_timeout, byte, 0644);
 MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown");
 
-static u8 nvme_max_retries = 0;
+static u8 nvme_max_retries = 5;
 module_param_named(max_retries, nvme_max_retries, byte, 0644);
 MODULE_PARM_DESC(max_retries, "max number of retries a command may have");
 
@@ -766,57 +766,6 @@ void nvme_cleanup_cmd(struct request *req)
 }
 EXPORT_SYMBOL_GPL(nvme_cleanup_cmd);
 
-#define TIFA_CMD_GCT (911)
-#define TIFA_CMD_RET (1024)
-
-static inline char *tifa_get_diskname(struct nvme_ns *ns)
-{
-	BUG_ON(!ns);
-	BUG_ON(!ns->disk);
-	return (ns->disk->disk_name);
-}
-
-/* Coperd: TIFA setup nvme cmd GCT flags if needed */
-static void tifa_setup_cmd(struct nvme_ns *ns, struct request *req,
-			   struct nvme_command *cmd)
-{
-	struct nvme_rw_command *c = &(cmd->rw);
-
-	/* Coperd: we do this at the very end of nvme_setup_cmd */
-	if (c->opcode != nvme_cmd_read) {
-		return;
-	}
-
-	WARN_ON(!req->bio);
-	/* Coperd: For TIFA */
-	if (test_bit(BIO_TIFA_GCT, &req->bio->bi_tifa_flags)) {
-		/* Coperd: GCT read */
-#if 0
-		printk("Coperd,%s,%d,%s,cid=%d,GCT,%s,LBA(%llu)", __func__,
-		       __LINE__, tifa_get_diskname(ns), c->command_id,
-		       rq_data_dir(req) ? "wr" : "rd", c->slba);
-#endif
-		c->rsvd2 = TIFA_CMD_GCT; /* fast-fail signal */
-	} else {
-		/* Do not fast-fail these I/Os: RWF and normal user I/Os */
-		if (req->bio->is_user_req) {
-			/* user read, do not fast-fail me b/c I'm a reconstruction I/O! */
-			c->rsvd2 = TIFA_CMD_RET;
-		}
-	}
-
-#if 1
-	if (test_bit(BIO_TIFA_RET, &req->bio->bi_tifa_flags)) {
-#if 0
-		printk("Coperd,%s,%d,%s,cid=%d,RET,%s,LBA(%llu)", __func__,
-		       __LINE__, ns->disk->disk_name, c->command_id,
-		       rq_data_dir(req) ? "wr" : "rd", c->slba);
-#endif
-		c->rsvd2 = TIFA_CMD_RET;
-	}
-#endif
-}
-
 blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req,
 		struct nvme_command *cmd)
 {
@@ -849,10 +798,6 @@ blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req,
 	}
 
 	cmd->common.command_id = req->tag;
-
-	/* Coperd: TIFA setup NVMe GCT cmd flag here */
-	tifa_setup_cmd(ns, req, cmd);
-
 	trace_nvme_setup_cmd(req, cmd);
 	return ret;
 }

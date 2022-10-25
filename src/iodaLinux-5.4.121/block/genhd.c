@@ -1190,7 +1190,7 @@ static DEVICE_ATTR(size, 0444, part_size_show, NULL);
 static DEVICE_ATTR(alignment_offset, 0444, disk_alignment_offset_show, NULL);
 static DEVICE_ATTR(discard_alignment, 0444, disk_discard_alignment_show, NULL);
 static DEVICE_ATTR(capability, 0444, disk_capability_show, NULL);
-static DEVICE_ATTR(stat, 0644, part_stat_show, part_stat_store);
+static DEVICE_ATTR(stat, 0444, part_stat_show, NULL);
 static DEVICE_ATTR(inflight, 0444, part_inflight_show, NULL);
 static DEVICE_ATTR(badblocks, 0644, disk_badblocks_show, disk_badblocks_store);
 #ifdef CONFIG_FAIL_MAKE_REQUEST

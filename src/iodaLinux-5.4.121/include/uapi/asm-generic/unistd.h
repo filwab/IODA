@@ -851,45 +851,8 @@ __SYSCALL(__NR_pidfd_open, sys_pidfd_open)
 __SYSCALL(__NR_clone3, sys_clone3)
 #endif
 
-#define	__NR_start_stamp 436
-__SYSCALL(__NR_start_stamp, sys_start_stamp)
-#define	__NR_changeReadPolicy 437
-__SYSCALL(__NR_changeReadPolicy, sys_changeReadPolicy)
-#define	__NR_tifa_bio_ttl 438
-__SYSCALL(__NR_tifa_bio_ttl, sys_tifa_bio_ttl)
-#define	__NR_tifa_bio_ret 439
-__SYSCALL(__NR_tifa_bio_ret, sys_tifa_bio_ret)
-#define	__NR_tifa_bio_rfw 440
-__SYSCALL(__NR_tifa_bio_rfw, sys_tifa_bio_rfw)
-#define	__NR_tifa_bio_gct 441
-__SYSCALL(__NR_tifa_bio_gct, sys_tifa_bio_gct)
-#define	__NR_tifa_bio_gct_ret 442
-__SYSCALL(__NR_tifa_bio_gct_ret, sys_tifa_bio_gct_ret)
-#define	__NR_tifa_bio_rfw_ret 443
-__SYSCALL(__NR_tifa_bio_rfw_ret, sys_tifa_bio_rfw_ret)
-#define	__NR_tifa_bio_com 444
-__SYSCALL(__NR_tifa_bio_com, sys_tifa_bio_com)
-#define	__NR_tifa_bio_gct_nor 445
-__SYSCALL(__NR_tifa_bio_gct_nor, sys_tifa_bio_gct_nor)
-#define	__NR_tifa_bio_gct_eio 446
-__SYSCALL(__NR_tifa_bio_gct_eio, sys_tifa_bio_gct_eio)
-#define	__NR_tifa_bio_rfw_nor 447
-__SYSCALL(__NR_tifa_bio_rfw_nor, sys_tifa_bio_rfw_nor)
-#define	__NR_tifa_bio_rfw_eio 448
-__SYSCALL(__NR_tifa_bio_rfw_eio, sys_tifa_bio_rfw_eio)
-#define	__NR_tifa_tifa_bio_stripe 449
-__SYSCALL(__NR_tifa_tifa_bio_stripe, sys_tifa_bio_stripe)
-#define	__NR_tifa_dio_ttl 450
-__SYSCALL(__NR_tifa_dio_ttl, sys_tifa_dio_ttl)
-#define	__NR_tifa_dio_gc 451
-__SYSCALL(__NR_tifa_dio_gc, sys_tifa_dio_gc)
-#define	__NR_stripe_in_gc_num 452
-__SYSCALL(__NR_stripe_in_gc_num, sys_stripe_in_gc_num)
-#define	__NR_tifa_dio_in_gc_num 453
-__SYSCALL(__NR_tifa_dio_in_gc_num, sys_tifa_dio_in_gc_num)
-
 #undef __NR_syscalls
-#define __NR_syscalls 454
+#define __NR_syscalls 436
 
 /*
  * 32 bit systems traditionally used different

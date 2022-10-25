@@ -37,14 +37,6 @@
 #include <linux/suspend.h>
 #include "internal.h"
 
-extern atomic_t tifa_dio_ttl;
-extern atomic_t tifa_dio_gc;
-extern atomic_t stripe_in_gc_num[5];
-extern atomic_t tifa_dio_in_gc_num[5];
-
-extern u64 *rdlat_array;
-extern atomic_t rdlat_idx;
-
 struct bdev_inode {
 	struct block_device bdev;
 	struct inode vfs_inode;
@@ -202,36 +194,6 @@ static unsigned int dio_bio_write_op(struct kiocb *iocb)
 static void blkdev_bio_end_io_simple(struct bio *bio)
 {
 	struct task_struct *waiter = bio->bi_private;
-	const int rw = bio_data_dir(bio);
-
-	/* Coperd: migrated logic from MK */
-	if (rw == READ && bio->bi_forRaid) {
-		int i, max_gc = 0;
-		if (bio->bi_blkdev_blocked)
-			atomic_inc(&tifa_dio_gc);
-		atomic_inc(&tifa_dio_ttl);
-		for (i = 0; i < 5; i++) {
-			int cnt = bio->bi_blkdev_in_gc_num[i];
-			atomic_add(cnt, &stripe_in_gc_num[i]);
-			if (cnt > 0) {
-				max_gc = i;
-			}
-		}
-		atomic_inc(&tifa_dio_in_gc_num[max_gc]);
-
-		/* Coperd: store profiled latencies */
-		if (rdlat_array) {
-			long cur_idx = atomic_inc_return(&rdlat_idx);
-			rdlat_array[cur_idx] = bio->bi_tifa_wait;
-			//printk("Coperd,rd,rqlat,i:%ld,lat:%llu\n", cur_idx, rdlat_array[cur_idx]);
-		}
-	} else if (rw == READ && !bio->bi_forRaid) {
-		printk("Coperd,rd,bi_forRaid=0,slba=%lu,size=%d\n",
-		       bio->bi_iter.bi_sector, bio->bi_iter.bi_size);
-	} else {
-		WARN_ON(rw != WRITE);
-		//printk("Coperd,wr,bi_forRaid=0,slba=%lu,size=%d\n", bio->bi_iter.bi_sector, bio->bi_iter.bi_size);
-	}
 
 	WRITE_ONCE(bio->bi_private, NULL);
 	blk_wake_io_task(waiter);

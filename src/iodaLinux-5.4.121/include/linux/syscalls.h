@@ -1224,24 +1224,6 @@ asmlinkage long sys_ni_syscall(void);
 
 #endif /* CONFIG_ARCH_HAS_SYSCALL_WRAPPER */
 
-asmlinkage long sys_start_stamp(void);
-asmlinkage long sys_changeReadPolicy(int newval);
-asmlinkage long sys_tifa_bio_ttl(int options);
-asmlinkage long sys_tifa_bio_ret(int options);
-asmlinkage long sys_tifa_bio_rfw(int options);
-asmlinkage long sys_tifa_bio_gct(int options);
-asmlinkage long sys_tifa_bio_gct_ret(int options);
-asmlinkage long sys_tifa_bio_rfw_ret(int options);
-asmlinkage long sys_tifa_bio_com(int options);
-asmlinkage long sys_tifa_bio_gct_nor(int options);
-asmlinkage long sys_tifa_bio_gct_eio(int options);
-asmlinkage long sys_tifa_bio_rfw_nor(int options);
-asmlinkage long sys_tifa_bio_rfw_eio(int options);
-asmlinkage long sys_tifa_bio_stripe(int options);
-asmlinkage long sys_tifa_dio_ttl(int options);
-asmlinkage long sys_tifa_dio_gc(int options);
-asmlinkage long sys_stripe_in_gc_num(int options, int idx);
-asmlinkage long sys_tifa_dio_in_gc_num(int options, int idx);
 
 /*
  * Kernel code should not call syscalls (i.e., sys_xyzyyz()) directly.

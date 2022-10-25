@@ -154,21 +154,6 @@ struct bio {
 	blk_status_t		bi_status;
 	u8			bi_partno;
 
-	/* Coperd: migrated fields from MK */
-	unsigned long		bi_tifa_flags;
-	u32			bi_tifa_wait;
-	u32			bi_tifa_deadline;
-	int			bi_tifa_reason;
-	bool			bi_forRaid;
-	bool			bi_blkdev_blocked;
-	int			bi_blkdev_in_gc_num[5];
-
-	/* Coperd: IODA lateny profiling */
-	bool			pl;
-	bool			is_user_req;
-	bool			is_read;
-	ktime_t			st;
-
 	struct bvec_iter	bi_iter;
 
 	atomic_t		__bi_remaining;
@@ -266,10 +251,6 @@ enum {
  * only BVEC_POOL_IDX()
  */
 #define BIO_RESET_BITS	BVEC_POOL_OFFSET
-
-#define BIO_TIFA_GCT	1
-#define BIO_TIFA_RFW	2
-#define BIO_TIFA_RET	3
 
 typedef __u32 __bitwise blk_mq_req_flags_t;
 

@@ -648,9 +648,6 @@ extern ssize_t part_size_show(struct device *dev,
 			      struct device_attribute *attr, char *buf);
 extern ssize_t part_stat_show(struct device *dev,
 			      struct device_attribute *attr, char *buf);
-extern ssize_t part_stat_store(struct device *dev,
-			       struct device_attribute *attr,
-			       const char *buf, size_t count);
 extern ssize_t part_inflight_show(struct device *dev,
 			      struct device_attribute *attr, char *buf);
 #ifdef CONFIG_FAIL_MAKE_REQUEST

@@ -114,10 +114,6 @@ struct dio_submit {
 
 /* dio_state communicated between submission path and end_io */
 struct dio {
-	/* Coperd: migrated fields from MK */
-	int signature;
-	bool blocked;
-
 	int flags;			/* doesn't change */
 	int op;
 	int op_flags;

@@ -440,22 +440,3 @@
 433	i386	fspick			sys_fspick			__ia32_sys_fspick
 434	i386	pidfd_open		sys_pidfd_open			__ia32_sys_pidfd_open
 435	i386	clone3			sys_clone3			__ia32_sys_clone3
-
-436	i386	start_stamp		sys_start_stamp			__ia32_sys_start_stamp
-437	i386	changeReadPolicy	sys_changeReadPolicy		__ia32_sys_changeReadPolicy
-438	i386	tifa_bio_ttl		sys_tifa_bio_ttl		__ia32_sys_tifa_bio_ttl
-439	i386	tifa_bio_ret		sys_tifa_bio_ret		__ia32_sys_tifa_bio_ret
-440	i386	tifa_bio_rfw		sys_tifa_bio_rfw		__ia32_sys_tifa_bio_rfw
-441	i386	tifa_bio_gct		sys_tifa_bio_gct		__ia32_sys_tifa_bio_gct
-442	i386	tifa_bio_gct_ret	sys_tifa_bio_gct_ret		__ia32_sys_tifa_bio_gct_ret
-443	i386	tifa_bio_rfw_ret	sys_tifa_bio_rfw_ret		__ia32_sys_tifa_bio_rfw_ret
-444	i386	tifa_bio_com		sys_tifa_bio_com		__ia32_sys_tifa_bio_com
-445	i386	tifa_bio_gct_nor	sys_tifa_bio_gct_nor		__ia32_sys_tifa_bio_gct_nor
-446	i386	tifa_bio_gct_eio	sys_tifa_bio_gct_eio		__ia32_sys_tifa_bio_gct_eio
-447	i386	tifa_bio_rfw_nor	sys_tifa_bio_rfw_nor		__ia32_sys_tifa_bio_rfw_nor
-448	i386	tifa_bio_rfw_eio	sys_tifa_bio_rfw_eio		__ia32_sys_tifa_bio_rfw_eio
-449	i386	tifa_tifa_bio_stripe	sys_tifa_bio_stripe		__ia32_sys_tifa_bio_stripe
-450	i386	tifa_dio_ttl		sys_tifa_dio_ttl		__ia32_sys_tifa_dio_ttl
-451	i386	tifa_dio_gc		sys_tifa_dio_gc			__ia32_sys_tifa_dio_gc
-452	i386	stripe_in_gc_num	sys_stripe_in_gc_num		__ia32_sys_stripe_in_gc_num
-453	i386	tifa_dio_in_gc_num	sys_tifa_dio_in_gc_num		__ia32_sys_tifa_dio_in_gc_num

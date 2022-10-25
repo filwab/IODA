@@ -334,8 +334,6 @@ static bool nvme_dbbuf_update_and_check_event(u16 value, u32 *dbbuf_db,
 		 */
 		mb();
 
-		return false;
-
 		if (!nvme_dbbuf_need_event(*dbbuf_ei, value, old_value))
 			return false;
 	}
@@ -936,18 +934,6 @@ static blk_status_t nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	}
 
 	blk_mq_start_request(req);
-
-	/* Coperd: IODA, nvme-read opcode: 0x2 */
-	if (req && req->bio) {
-		req->bio->pl = test_bit(BIO_TIFA_GCT, &req->bio->bi_tifa_flags);
-		req->bio->is_user_req =
-			!test_bit(BIO_TIFA_RFW, &req->bio->bi_tifa_flags);
-		req->bio->is_read = (cmnd.rw.opcode == 0x2 ? true : false);
-		req->bio->st = ktime_get();
-	} else {
-		//printk("Bummer, req=%p,req->bio=%p\n", req, req->bio);
-	}
-
 	nvme_submit_cmd(nvmeq, &cmnd, bd->last);
 	return BLK_STS_OK;
 out_unmap_data:
@@ -994,37 +980,6 @@ static inline struct blk_mq_tags *nvme_queue_tagset(struct nvme_queue *nvmeq)
 	return nvmeq->dev->tagset.tags[nvmeq->qid - 1];
 }
 
-/* Coperd: For TIFA, pass GC remaining time (gcrt) back to bio if any */
-static inline void tifa_pass_gcrt_to_bio(struct request *req,
-					 struct nvme_completion *cqe)
-{
-	u64 gcrt = cqe->result.u64;
-	char *devname;
-
-	WARN_ON(req == NULL);
-	devname = req->rq_disk->disk_name;
-
-#if 0
-	if (req->bio && req->bio->is_read) {
-		printk("%s,rlat(us)=%llu,rfw=%d,PL=%d,cid=%d,gcrt=%llu,status=0x%x,%d\n",
-		       devname, ktime_us_delta(ktime_get(), req->bio->st),
-		       !req->bio->is_user_req, req->bio->pl, cqe->command_id,
-		       cqe->result.u64, le16_to_cpu(cqe->status) >> 1,
-		       (req->bio == req->biotail));
-	} else if (!req->bio) {
-		//printk("%s, shit, req->bio=%p\n", devname, req->bio);
-	}
-#endif
-
-	if (gcrt == 0) {
-		return;
-	}
-
-	/* Coperd: is this enough?? */
-	//WARN_ON(req->bio != req->biotail);
-	req->bio->bi_tifa_wait = cqe->result.u64;
-}
-
 static inline void nvme_handle_cqe(struct nvme_queue *nvmeq, u16 idx)
 {
 	volatile struct nvme_completion *cqe = &nvmeq->cqes[idx];
@@ -1050,9 +1005,6 @@ static inline void nvme_handle_cqe(struct nvme_queue *nvmeq, u16 idx)
 			cqe->command_id, le16_to_cpu(cqe->sq_id));
 		return;
 	}
-
-	/* Coperd: For TIFA */
-	tifa_pass_gcrt_to_bio(req, cqe);
 
 	trace_nvme_sq(req, cqe->sq_head, nvmeq->sq_tail);
 	nvme_end_request(req, cqe->status, cqe->result);
