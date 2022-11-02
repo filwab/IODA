@@ -769,13 +769,6 @@ EXPORT_SYMBOL_GPL(nvme_cleanup_cmd);
 #define TIFA_CMD_GCT (911)
 #define TIFA_CMD_RET (1024)
 
-static inline char *tifa_get_diskname(struct nvme_ns *ns)
-{
-	BUG_ON(!ns);
-	BUG_ON(!ns->disk);
-	return (ns->disk->disk_name);
-}
-
 /* Coperd: TIFA setup nvme cmd GCT flags if needed */
 static void tifa_setup_cmd(struct nvme_ns *ns, struct request *req,
 			   struct nvme_command *cmd)
@@ -791,11 +784,6 @@ static void tifa_setup_cmd(struct nvme_ns *ns, struct request *req,
 	/* Coperd: For TIFA */
 	if (test_bit(BIO_TIFA_GCT, &req->bio->bi_tifa_flags)) {
 		/* Coperd: GCT read */
-#if 0
-		printk("Coperd,%s,%d,%s,cid=%d,GCT,%s,LBA(%llu)", __func__,
-		       __LINE__, tifa_get_diskname(ns), c->command_id,
-		       rq_data_dir(req) ? "wr" : "rd", c->slba);
-#endif
 		c->rsvd2 = TIFA_CMD_GCT; /* fast-fail signal */
 	} else {
 		/* Do not fast-fail these I/Os: RWF and normal user I/Os */
@@ -805,16 +793,9 @@ static void tifa_setup_cmd(struct nvme_ns *ns, struct request *req,
 		}
 	}
 
-#if 1
 	if (test_bit(BIO_TIFA_RET, &req->bio->bi_tifa_flags)) {
-#if 0
-		printk("Coperd,%s,%d,%s,cid=%d,RET,%s,LBA(%llu)", __func__,
-		       __LINE__, ns->disk->disk_name, c->command_id,
-		       rq_data_dir(req) ? "wr" : "rd", c->slba);
-#endif
 		c->rsvd2 = TIFA_CMD_RET;
 	}
-#endif
 }
 
 blk_status_t nvme_setup_cmd(struct nvme_ns *ns, struct request *req,

@@ -146,19 +146,6 @@ ssize_t part_stat_show(struct device *dev,
 		(unsigned int)part_stat_read_msecs(p, STAT_DISCARD));
 }
 
-ssize_t part_stat_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t count)
-{
-	struct hd_struct *p = dev_to_part(dev);
-	struct gendisk *d = dev_to_disk(dev);
-
-	part_stat_set_all(p, 0);
-	printk("IODA, reset [%s] stat counters ..\n", d->disk_name);
-
-	return 1;
-}
-
 ssize_t part_inflight_show(struct device *dev, struct device_attribute *attr,
 			   char *buf)
 {

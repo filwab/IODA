@@ -157,17 +157,7 @@ struct bio {
 	/* Coperd: migrated fields from MK */
 	unsigned long		bi_tifa_flags;
 	u32			bi_tifa_wait;
-	u32			bi_tifa_deadline;
-	int			bi_tifa_reason;
-	bool			bi_forRaid;
-	bool			bi_blkdev_blocked;
-	int			bi_blkdev_in_gc_num[5];
-
-	/* Coperd: IODA lateny profiling */
-	bool			pl;
 	bool			is_user_req;
-	bool			is_read;
-	ktime_t			st;
 
 	struct bvec_iter	bi_iter;
 

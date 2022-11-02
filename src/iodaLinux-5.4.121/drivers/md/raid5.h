@@ -788,28 +788,7 @@ raid5_get_active_stripe(struct r5conf *conf, sector_t sector,
 extern int raid5_calc_degraded(struct r5conf *conf);
 extern int r5c_journal_mode_set(struct mddev *mddev, int journal_mode);
 
-/* Coperd: TIFA related */
-ssize_t tifa_show_rdlat(struct mddev *mddev, char *page);
-ssize_t tifa_store_rdlat(struct mddev *mddev, const char *page, size_t len);
-extern struct md_sysfs_entry tifa_rdlat;
-
-extern u64 *rdlat_array;
-extern atomic_t rdlat_idx;
-
 extern int readPolicy;
-
-extern unsigned long long tifa_bio_ttl;		// Total number of bios sent in RAID
-extern unsigned long long tifa_bio_ret;		// Number of retry bios sent in RAID
-extern unsigned long long tifa_bio_rfw;		// Number of bios read for write
-extern unsigned long long tifa_bio_gct;		// Number of gct bios sent in RAID
-extern unsigned long long tifa_bio_gct_ret;	// Among retry bios, number of retry for gct
-extern unsigned long long tifa_bio_rfw_ret;	// Among retry bios, number of retry for rfw
-extern unsigned long long tifa_bio_com;		// Number of bios computed
-extern unsigned long long tifa_bio_gct_nor;	// Number of bios gct normal finished
-extern unsigned long long tifa_bio_gct_eio;	// Number of gct returned with eio
-extern unsigned long long tifa_bio_rfw_nor;	// Number of bios rfw normal finished
-extern unsigned long long tifa_bio_rfw_eio;	// Number of rfw returned with eio
-extern unsigned long long tifa_bio_stripe;	// Number of full stripe
 
 #define TIFA_POLICY_NORMAL	0 // default RAID through stripe
 #define TIFA_POLICY_EBUSY	1 // EBUSY

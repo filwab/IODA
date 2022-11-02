@@ -1118,9 +1118,6 @@ again:
 			if (test_bit(R5_ReadNoMerge, &head_sh->dev[i].flags))
 				bi->bi_opf |= REQ_NOMERGE;
 
-			if (!op_is_write(op)) {
-				tifa_bio_ttl++;
-			}
 			/*
 			* MikeT added 3/7/2017:
 			* BIO_TIFA_GCT and BIO_TIFA_RFW can be set at the same time
@@ -1143,29 +1140,15 @@ again:
 			if (test_bit(BIO_TIFA_RFW, &bi->bi_tifa_flags)) {
 				/* IODA: 2020, let's do reconstruction for rfw other than IOD3 */
 				if (readPolicy == TIFA_POLICY_IOD3) {
-#if 1
-					clear_bit(BIO_TIFA_GCT,
-						  &bi->bi_tifa_flags);
-					clear_bit(BIO_TIFA_RET,
-						  &bi->bi_tifa_flags);
-#endif
+					clear_bit(BIO_TIFA_GCT, &bi->bi_tifa_flags);
+					clear_bit(BIO_TIFA_RET, &bi->bi_tifa_flags);
 				}
-			} else if (test_and_clear_bit(R5_ReadGC,
-						      &sh->dev[i].flags)) {
-				printk("raid5: sent-ReadGC:%d,sh:0x%lx,shcount:%d\n",
-				       i, sh->sector, atomic_read(&sh->count));
+			} else if (test_and_clear_bit(R5_ReadGC, &sh->dev[i].flags)) {
+				// printk("raid5: sent-ReadGC:%d,sh:0x%lx,shcount:%d\n",
+				//        i, sh->sector, atomic_read(&sh->count));
 				clear_bit(BIO_TIFA_GCT, &bi->bi_tifa_flags);
 				set_bit(BIO_TIFA_RET, &bi->bi_tifa_flags);
-				WARN_ON(test_bit(BIO_TIFA_RFW,
-						 &bi->bi_tifa_flags));
-			}
-
-			if (test_bit(BIO_TIFA_RET, &bi->bi_tifa_flags)) {
-				tifa_bio_ret++;
-			} else if (test_bit(BIO_TIFA_RFW, &bi->bi_tifa_flags)) {
-				tifa_bio_rfw++;
-			} else if (test_bit(BIO_TIFA_GCT, &bi->bi_tifa_flags)) {
-				tifa_bio_gct++;
+				WARN_ON(test_bit(BIO_TIFA_RFW, &bi->bi_tifa_flags));
 			}
 
 			if (test_bit(R5_SkipCopy, &sh->dev[i].flags))
@@ -1204,25 +1187,6 @@ again:
 			if (should_defer && op_is_write(op))
 				bio_list_add(&pending_bios, bi);
 			else {
-#if 0
-				cloned_bi = bio_clone_kmalloc(bi, GFP_KERNEL);
-				if (cloned_bi) {
-					cloned_bi->bi_end_io = bi->bi_end_io;
-					cloned_bi->bi_private = bi;
-					cloned_bi->bi_tifa_flags = bi->bi_tifa_flags;
-					bi = cloned_bi;
-				}
-#endif
-				/* Coperd: NO idea what this part is doing */
-#if 0
-				bi->bi_tifa_deadline = 0;
-				if (ktime_after(sh->dev[i].max_true_ts, now)) {
-					u32 timediff = ktime_to_us(ktime_sub(sh->dev[i].max_true_ts, now));
-					if (timediff > 500) {
-						bi->bi_tifa_deadline = timediff + 100;
-					}
-				}
-#endif
 				set_bit(R5_Inflight, &sh->dev[i].flags);
 				if (bi->bi_next) {
 					WARN_ON(1);
@@ -1389,7 +1353,6 @@ static void ops_complete_biofill(void *stripe_head_ref)
 			struct bio *rbi, *rbi2;
 
 			/* Coperd: TIFA added */
-			int in_gc_num = atomic_read(&dev->in_gc_num);
 			atomic_set(&dev->in_gc_num, 0);
 
 			BUG_ON(!dev->read);
@@ -1398,17 +1361,6 @@ static void ops_complete_biofill(void *stripe_head_ref)
 			while (rbi && rbi->bi_iter.bi_sector <
 				dev->sector + STRIPE_SECTORS) {
 				rbi2 = r5_next_bio(rbi, dev->sector);
-
-				//rbi->bi_forRaid = true;
-				if (test_bit(STRIPE_BLOCKED, &sh->state)) {
-					rbi->bi_blkdev_blocked = true;
-				}
-				if (in_gc_num >= 0 && in_gc_num < 5) {
-					rbi->bi_blkdev_in_gc_num[in_gc_num]++;
-				} else {
-					/* Coperd: on purpose crash */
-					BUG_ON(1);
-				}
 
 				bio_endio(rbi);
 				rbi = rbi2;
@@ -1474,13 +1426,7 @@ static void mark_target_uptodate(struct stripe_head *sh, int target)
 		gc_flag = gc_flag >> 1;
 	}
 	sh->gc_flag = 0;
-	tifa_bio_com++;
 	atomic_set(&tgt->in_gc_num, gc_num);
-#if 0
-	printk("raid5: compute-end:%d,lat:%lld,sh:0x%lx,shcount:%d\n",target,
-		ktime_to_us(ktime_sub(ktime_get(), tgt->tifa_compute_ts)),
-		sh->sector,atomic_read(&sh->count));
-#endif
 
 	set_bit(R5_UPTODATE, &tgt->flags);
 	BUG_ON(!test_bit(R5_Wantcompute, &tgt->flags));
@@ -2629,39 +2575,26 @@ static void raid5_end_read_request(struct bio * bi)
 
 	if (bi->bi_tifa_wait != 0) {
 		if (tifa_gct && tifa_rfw) {
-			//WARN_ON(1);
-#if 1
 			/**
 			* MikeT Added:
 			* Read for write in GCT mode, we may reconstruct it
 			* if it has to wait more than 2ms
 			**/
 			if (bi->bi_tifa_wait > 0) { //TODO
-				tifa_bio_rfw_eio++;
 				tifa_pass = 0;
 			} else {
-				tifa_bio_rfw_nor++;
 				tifa_pass = 1;
 			}
-#endif
 		} else if (tifa_gct) {
-			tifa_bio_gct_eio++;
 			tifa_pass = 0;
 		} else if (tifa_rfw && tifa_ret) {
 			WARN_ON(1);
-#if 0
-			tifa_bio_rfw_ret++;
-			tifa_pass = 1;
-#endif
 		} else if (tifa_ret) {
-			tifa_bio_gct_ret++;
 			tifa_pass = 1;
 		} else if (!tifa_gct) {
 			/* Coperd: we only want to profile latency here */
 			tifa_pass = 1;
 		}
-	} else {
-		tifa_bio_gct_nor++;
 	}
 
 	for (i=0 ; i<disks; i++)
@@ -2708,13 +2641,6 @@ static void raid5_end_read_request(struct bio * bi)
 		} else if (test_bit(R5_ReadNoMerge, &sh->dev[i].flags))
 			clear_bit(R5_ReadNoMerge, &sh->dev[i].flags);
 
-		/* Coperd: TIFA added */
-		if (tifa_ret) {
-			printk("Coperd,: retry_read:%d SUCCESS,lat:%u,sh:0x%lx,shcount:%d\n",
-			       i, bi->bi_tifa_wait, sh->sector,
-			       atomic_read(&sh->count));
-		}
-
 		/* Coperd: update pread bio latency field */
 		if (sh->dev[i].toread &&
 		    sh->dev[i].toread->bi_tifa_wait < bi->bi_tifa_wait) {
@@ -2752,12 +2678,6 @@ static void raid5_end_read_request(struct bio * bi)
 			true_ts = ktime_add_us(now, bi->bi_tifa_wait);
 
 			if (!test_bit(R5_ReadNoMerge, &sh->dev[i].flags)) {
-#if 0
-			printk("raid5: gc_error:%d,wait:%u,sh:0x%lx,shcount:%d,reason:%d,"
-				"tifa-flags:%lx\n",i, bi->bi_tifa_wait, sh->sector,
-				atomic_read(&sh->count), bi->bi_tifa_reason,
-				bi->bi_tifa_flags);
-#endif
 				sh->dev[i].expected_ts = expected_ts;
 				sh->dev[i].true_ts = true_ts;
 				set_bit(R5_GCError, &sh->dev[i].flags);
@@ -2833,7 +2753,6 @@ static void raid5_end_read_request(struct bio * bi)
 				md_error(conf->mddev, rdev);
 		}
 	}
-	// bio_put(bi);
 out:
 	rdev_dec_pending(rdev, conf->mddev);
 	/* Coperd: TIFA added */
@@ -2919,7 +2838,6 @@ static void raid5_end_write_request(struct bio *bi)
 
 	/* Coperd: TIFA added */
 	clear_bit(R5_Inflight, &sh->dev[i].flags);
-	// bio_put(bi);
 
 	bio_reset(bi);
 	if (!test_and_clear_bit(R5_DOUBLE_LOCKED, &sh->dev[i].flags))
@@ -3963,7 +3881,6 @@ static int fetch_block(struct stripe_head *sh, struct stripe_head_state *s,
 			s->uptodate += 2;
 			s->req_compute = 1;
 			return 1;
-
 		} else if ((s->uptodate == disks - 1) && s->in_gc_num &&
 			   disk_idx == s->max_i) {
 			/**
@@ -3988,10 +3905,7 @@ static int fetch_block(struct stripe_head *sh, struct stripe_head_state *s,
 			* be R5_UPTODATE by the time it is needed for a
 			* subsequent operation.
 			*/
-			//reconstructed++;
 			s->uptodate++;
-			//if(readPolicy ==  && s->max_ts && s->sec_ts)
-			//    time_saved_expected += ktime_to_ns(ktime_sub(*s->max_ts, *s->sec_ts));
 			return 1;
 		} else if (s->in_gc_num >= 1 &&
 			   test_bit(R5_Insync, &dev->flags)) {
@@ -4002,11 +3916,6 @@ static int fetch_block(struct stripe_head *sh, struct stripe_head_state *s,
 				use = 0;
 			}
 			if (use) {
-#if 0
-				printk("raid5: %s-read:%d,sh:0x%lx,shcount:%d\n",
-					test_bit(R5_ReadGC, &dev->flags) ? "GC" : "NR",
-					disk_idx, sh->sector,atomic_read(&sh->count));
-#endif
 				clear_bit(R5_InGC, &dev->flags);
 				set_bit(R5_LOCKED, &dev->flags);
 				set_bit(R5_Wantread, &dev->flags);
@@ -4689,22 +4598,6 @@ static void handle_stripe_expansion(struct r5conf *conf, struct stripe_head *sh)
 	async_tx_quiesce(&tx);
 }
 
-#if 0
-static int count_uptodate(struct stripe_head *sh)
-{
-	int disks = sh->disks;
-	int i, uptodate = 0;
-
-	rcu_read_lock();
-	for (i = disks; i--;) {
-		if (test_bit(R5_UPTODATE, &sh->dev[i].flags))
-			uptodate++;
-	}
-	rcu_read_unlock();
-	return uptodate;
-}
-#endif
-
 /*
  * handle_stripe - do things to a stripe.
  *
@@ -4935,12 +4828,6 @@ static void analyse_stripe(struct stripe_head *sh, struct stripe_head_state *s)
 			}
 		}
 	}
-#if 0
-	if (s->in_gc_num) {
-		printk("raid5: in_gc_num:%d,sh:0x%lx,shcount:%d\n",
-		       s->in_gc_num, sh->sector, atomic_read(&sh->count));
-	}
-#endif
 
 	if (test_bit(STRIPE_SYNCING, &sh->state)) {
 		/* If there is a failed device being replaced,
@@ -5140,10 +5027,6 @@ static void handle_stripe(struct stripe_head *sh)
 	       " to_write=%d failed=%d failed_num=%d,%d\n",
 	       s.locked, s.uptodate, s.to_read, s.to_write, s.failed,
 	       s.failed_num[0], s.failed_num[1]);
-	/* Coperd: TIFA added */
-	if (s.to_read == disks - 1) {
-		tifa_bio_stripe++;
-	}
 	/*
 	 * check if the array has lost more than max_degraded devices and,
 	 * if so, some requests might need to be failed.
@@ -6020,11 +5903,6 @@ static bool raid5_make_request(struct mddev *mddev, struct bio * bi)
 		make_discard_request(mddev, bi);
 		md_write_end(mddev);
 		return true;
-	}
-
-	/* Coperd: mark bio->forRaid flag at the very beginning */
-	if (rw == READ) {
-		bi->bi_forRaid = true;
 	}
 
 	logical_sector = bi->bi_iter.bi_sector & ~((sector_t)STRIPE_SECTORS-1);
@@ -7106,7 +6984,6 @@ static struct attribute *raid5_attrs[] =  {
 	&raid5_rmw_level.attr,
 	&r5c_journal_mode.attr,
 	&ppl_write_hint.attr,
-	&tifa_rdlat.attr,
 	NULL,
 };
 static struct attribute_group raid5_attrs_group = {

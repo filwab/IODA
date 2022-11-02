@@ -939,13 +939,8 @@ static blk_status_t nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 	/* Coperd: IODA, nvme-read opcode: 0x2 */
 	if (req && req->bio) {
-		req->bio->pl = test_bit(BIO_TIFA_GCT, &req->bio->bi_tifa_flags);
 		req->bio->is_user_req =
 			!test_bit(BIO_TIFA_RFW, &req->bio->bi_tifa_flags);
-		req->bio->is_read = (cmnd.rw.opcode == 0x2 ? true : false);
-		req->bio->st = ktime_get();
-	} else {
-		//printk("Bummer, req=%p,req->bio=%p\n", req, req->bio);
 	}
 
 	nvme_submit_cmd(nvmeq, &cmnd, bd->last);
@@ -999,23 +994,8 @@ static inline void tifa_pass_gcrt_to_bio(struct request *req,
 					 struct nvme_completion *cqe)
 {
 	u64 gcrt = cqe->result.u64;
-	char *devname;
 
 	WARN_ON(req == NULL);
-	devname = req->rq_disk->disk_name;
-
-#if 0
-	if (req->bio && req->bio->is_read) {
-		printk("%s,rlat(us)=%llu,rfw=%d,PL=%d,cid=%d,gcrt=%llu,status=0x%x,%d\n",
-		       devname, ktime_us_delta(ktime_get(), req->bio->st),
-		       !req->bio->is_user_req, req->bio->pl, cqe->command_id,
-		       cqe->result.u64, le16_to_cpu(cqe->status) >> 1,
-		       (req->bio == req->biotail));
-	} else if (!req->bio) {
-		//printk("%s, shit, req->bio=%p\n", devname, req->bio);
-	}
-#endif
-
 	if (gcrt == 0) {
 		return;
 	}

@@ -357,25 +357,7 @@
 433	common	fspick			__x64_sys_fspick
 434	common	pidfd_open		__x64_sys_pidfd_open
 435	common	clone3			__x64_sys_clone3/ptregs
-
-436	common	start_stamp		__x64_sys_start_stamp
-437	common	changeReadPolicy	__x64_sys_changeReadPolicy
-438	common	tifa_bio_ttl		__x64_sys_tifa_bio_ttl
-439	common	tifa_bio_ret		__x64_sys_tifa_bio_ret
-440	common	tifa_bio_rfw		__x64_sys_tifa_bio_rfw
-441	common	tifa_bio_gct		__x64_sys_tifa_bio_gct
-442	common	tifa_bio_gct_ret	__x64_sys_tifa_bio_gct_ret
-443	common	tifa_bio_rfw_ret	__x64_sys_tifa_bio_rfw_ret
-444	common	tifa_bio_com		__x64_sys_tifa_bio_com
-445	common	tifa_bio_gct_nor	__x64_sys_tifa_bio_gct_nor
-446	common	tifa_bio_gct_eio	__x64_sys_tifa_bio_gct_eio
-447	common	tifa_bio_rfw_nor	__x64_sys_tifa_bio_rfw_nor
-448	common	tifa_bio_rfw_eio	__x64_sys_tifa_bio_rfw_eio
-449	common	tifa_tifa_bio_stripe	__x64_sys_tifa_bio_stripe
-450	common	tifa_dio_ttl		__x64_sys_tifa_dio_ttl
-451	common	tifa_dio_gc		__x64_sys_tifa_dio_gc
-452	common	stripe_in_gc_num	__x64_sys_stripe_in_gc_num
-453	common	tifa_dio_in_gc_num	__x64_sys_tifa_dio_in_gc_num
+436	common	changeReadPolicy	__x64_sys_changeReadPolicy
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact
