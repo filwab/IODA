@@ -4,6 +4,8 @@
 #-------------------------------------------------------------------------------
 
 FEMU_FLIP_CMD_OPCODE="0xef"
+SSD_NUM=`ls -l /dev/nvme*n1 | wc -l`
+SSD_MAX=`expr ${SSD_NUM} - 1`
 
 cmd=$1
 
@@ -26,6 +28,6 @@ if [[ $# != 1 || ${cmd} -lt 1 || ${cmd} -gt 24 || ( ${cmd} -gt 4 && ${cmd} -lt 8
     exit
 fi
 
-for i in $(seq 0 3); do
-    sudo nvme admin-passthru --opcode=${FEMU_FLIP_CMD_OPCODE} --cdw10=${cmd} /dev/nvme$i >/dev/null 2>&1
+for i in $(seq 0 ${SSD_MAX}); do
+    sudo nvme admin-passthru --opcode=${FEMU_FLIP_CMD_OPCODE} --cdw10=${cmd} /dev/nvme${i}n1 >/dev/null 2>&1
 done

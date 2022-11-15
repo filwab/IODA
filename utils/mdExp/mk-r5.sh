@@ -7,7 +7,9 @@ if [[ -b /dev/md5 ]]; then
     exit
 fi
 
-sudo mdadm --create /dev/md5 --chunk=64K --level=5 --raid-devices=4 /dev/nvme0n1 /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 --assume-clean
+SSD_NUM=`ls -l /dev/nvme*n1 | wc -l`
+
+sudo mdadm --create /dev/md5 --chunk=64K --level=5 --raid-devices=${SSD_NUM} /dev/nvme*n1 --assume-clean
 
 sleep 1
 

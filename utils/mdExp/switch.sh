@@ -12,6 +12,9 @@ if [[ $# != 1 ]]; then
     exit
 fi
 
+SSD_NUM=`ls -l /dev/nvme*n1 | wc -l`
+SSD_MAX=`expr ${SSD_NUM} - 1`
+
 mode=$1
 
 # Enter IODA mode
@@ -22,7 +25,7 @@ if [[ $mode == "ioda" ]]; then
     ./femu-config.sh 8   # set PL-win
     ./femu-config.sh 13  # set 100ms tw
     echo 2 | sudo tee /sys/block/md5/queue/nomerges
-    for i in 0 1 2 3; do
+    for i in $(seq 0 ${SSD_MAX}); do
         echo 2 | sudo tee /sys/block/nvme${i}n1/queue/nomerges
     done
     echo "===> In IODA mode now ... [done]"
@@ -31,9 +34,9 @@ elif [[ $mode == "base" ]]; then
     echo ""
     echo "===> Setting up Base mode ..."
     ./md-config 0     # set normal
-    ./femu-config.sh 8   # set normal
+    ./femu-config.sh 9   # set normal
     echo 0 | sudo tee /sys/block/md5/queue/nomerges
-    for i in 0 1 2 3; do
+    for i in $(seq 0 ${SSD_MAX}); do
         echo 0 | sudo tee /sys/block/nvme${i}n1/queue/nomerges
     done
     echo "===> In Base mode now ... [done]"
