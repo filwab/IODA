@@ -7003,7 +7003,7 @@ static void nvme_instance_init(Object *obj)
                         nvme_set_smart_warning, NULL, NULL);
 }
 
-static const TypeInfo nvme_info = {
+static const TypeInfo nvme_info = { /*gql-nvme operation bind*/
     .name          = TYPE_NVME,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(NvmeCtrl),

@@ -56,3 +56,4 @@ images/ioda.qcow2
 
 .vscode/
 images/ioda0.qcow2
+src/iodaFEMU-b13b482/.cache/clangd/*

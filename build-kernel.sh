@@ -23,7 +23,7 @@ echo ""
 cd ${IODA_TOPDIR}/src/iodaLinux-5.4.121
 make clean >/dev/null 2>&1
 cp ioda-config .config
-make -j64 >${IODA_BUILD_LOG} 2>&1
+bear -- make -j64 >${IODA_BUILD_LOG} 2>&1
 cd ${IODA_TOPDIR}
 
 IODA_LINUX_BIN="src/iodaLinux-5.4.121/arch/x86/boot/bzImage"
