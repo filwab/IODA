@@ -15,7 +15,7 @@ echo "===> Booting the IODA Virtual Machine..."
 sudo ${IODA_FEMU} \
     -name "iodaVM" \
     -cpu host \
-    -smp 16 \
+    -smp 48 \
     -m 16G \
     -enable-kvm \
     -boot menu=on \

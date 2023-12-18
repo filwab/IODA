@@ -65,6 +65,23 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         n->print_log = false;
         femu_log("%s,Log print [Disabled]!\n", n->devname);
         break;
+    
+    /*gql- gc-control switch */
+    case FEMU_SYNC_GC:
+        ssd->sp.enable_gc_sync = true;
+        femu_log("%s,FEMU GC Synchronization [Enabled]!\n", n->devname);
+        break;
+    case FEMU_UNSYNC_GC:
+        ssd->sp.enable_gc_sync = false;
+        femu_log("%s,FEMU GC Synchronization [Disabled]!\n", n->devname);
+        break;
+
+    case FEMU_WINDOW_100MS:
+        femu_log("FEMU_WINDOW_100MS\n");
+        ssd->sp.gc_sync_window = 100;
+        break;
+
+
     default:
         printf("FEMU:%s,Not implemented flip cmd (%lu)\n", n->devname, cdw10);
     }

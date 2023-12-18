@@ -2,6 +2,10 @@
 
 //#define FEMU_DEBUG_FTL
 
+uint16_t ssd_id_cnt = 0;//g-盘数量
+struct ssd *ssd_array[SSD_NUM];//g-包含了 SSD_NUM 个ssd的结构体数组
+uint64_t gc_endtime_array[SSD_NUM];
+
 static void *ftl_thread(void *arg);
 
 static inline bool should_gc(struct ssd *ssd)
@@ -276,11 +280,14 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->secs_per_line = spp->pgs_per_line * spp->secs_per_pg;
     spp->tt_lines = spp->blks_per_lun; /* TODO: to fix under multiplanes */
 
-    spp->gc_thres_pcent = 0.75;
+    /*gql- gc threshold and windows control */
+    spp->gc_thres_pcent = 0.90;
     spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
     spp->gc_thres_pcent_high = 0.95;
     spp->gc_thres_lines_high = (int)((1 - spp->gc_thres_pcent_high) * spp->tt_lines);
     spp->enable_gc_delay = true;
+    spp->enable_gc_sync = false;
+    spp->gc_sync_window = 100;
 
 
     check_params(spp);
@@ -369,6 +376,14 @@ void ssd_init(FemuCtrl *n)
 
     ssd_init_params(spp);
 
+    /*gql- assign ssd id for GC synchronization */
+    ssd->id = ssd_id_cnt;
+	ssd_array[ssd->id] = ssd;
+    ssd_id_cnt++;
+    //ftl_log("GCSYNC SSD initialized with id %d\n", ssd->id);
+	ssd->next_ssd_avail_time = 0;
+	ssd->earliest_ssd_lun_avail_time = UINT64_MAX;
+	gc_endtime_array[ssd->id] = 0;
     /* initialize ssd internal layout architecture */
     ssd->ch = g_malloc0(sizeof(struct ssd_channel) * spp->nchs);
     for (int i = 0; i < spp->nchs; i++) {
@@ -520,6 +535,13 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct
     default:
         ftl_err("Unsupported NAND command: 0x%x\n", c);
     }
+    
+    if (lun->next_lun_avail_time > ssd->next_ssd_avail_time) {
+		ssd->next_ssd_avail_time = lun->next_lun_avail_time;
+	}
+	if (lun->next_lun_avail_time < ssd->earliest_ssd_lun_avail_time) {
+		ssd->earliest_ssd_lun_avail_time = lun->next_lun_avail_time;
+	}
 
     return lat;
 }
@@ -675,7 +697,8 @@ static struct line *select_victim_line(struct ssd *ssd, bool force)
         return NULL;
     }
 
-    if (!force && victim_line->ipc < ssd->sp.pgs_per_line / 8) {
+    /*gql- change 8 to 4 当line中无效页面的数量小于行中总页面数量的25%（即1/4）时，才会考虑对这个行进行垃圾回收*/
+    if (!force && victim_line->ipc < ssd->sp.pgs_per_line / 4) {
         return NULL;
     }
 
@@ -688,7 +711,8 @@ static struct line *select_victim_line(struct ssd *ssd, bool force)
 }
 
 /* here ppa identifies the block we want to clean */
-static void clean_one_block(struct ssd *ssd, struct ppa *ppa)
+/*    Returns the number of valid pages we needed to copy within the block*/
+static int clean_one_block(struct ssd *ssd, struct ppa *ppa)
 {
     struct ssdparams *spp = &ssd->sp;
     struct nand_page *pg_iter = NULL;
@@ -708,6 +732,8 @@ static void clean_one_block(struct ssd *ssd, struct ppa *ppa)
     }
 
     ftl_assert(get_blk(ssd, ppa)->vpc == cnt);
+    
+    return cnt;
 }
 
 static void mark_line_free(struct ssd *ssd, struct ppa *ppa)
@@ -721,13 +747,25 @@ static void mark_line_free(struct ssd *ssd, struct ppa *ppa)
     lm->free_line_cnt++;
 }
 
-static int do_gc(struct ssd *ssd, bool force)
+static int do_gc(struct ssd *ssd, bool force, NvmeRequest *req)
 {
     struct line *victim_line = NULL;
     struct ssdparams *spp = &ssd->sp;
     struct nand_lun *lunp;
     struct ppa ppa;
     int ch, lun;
+    
+    uint64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+    int now_ms = now / 1e6;
+    int now_s = now / 1e9;
+
+    if (ssd->sp.enable_gc_sync && !force) {//如果开启了gc同步，且盘空闲line未达到高阈值
+        // Synchronizing Time Window logic
+        int time_window_ms = ssd->sp.gc_sync_window;
+        if (ssd->id != (now_ms/time_window_ms) % ssd_id_cnt) {
+            return 0;
+        }
+    }
 
     victim_line = select_victim_line(ssd, force);
     if (!victim_line) {
@@ -746,7 +784,7 @@ static int do_gc(struct ssd *ssd, bool force)
             ppa.g.lun = lun;
             ppa.g.pl = 0;
             lunp = get_lun(ssd, &ppa);
-            clean_one_block(ssd, &ppa);
+            ssd->num_valid_pages_copied_s += clean_one_block(ssd, &ppa);
             mark_block_free(ssd, &ppa);
 
             if (spp->enable_gc_delay) {
@@ -758,6 +796,9 @@ static int do_gc(struct ssd *ssd, bool force)
             }
 
             lunp->gc_endtime = lunp->next_lun_avail_time;
+            if (lunp->gc_endtime > gc_endtime_array[ssd->id]) {
+				gc_endtime_array[ssd->id] = lunp->gc_endtime;
+			}
         }
     }
 
@@ -777,37 +818,89 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
     uint64_t end_lpn = (lba + nsecs - 1) / spp->secs_per_pg;
     uint64_t lpn;
     uint64_t sublat, maxlat = 0;
+    struct nand_lun *lun;
+    bool in_gc = false; /* indicate whether any subIO met GC */
 
     if (end_lpn >= spp->tt_pgs) {
         ftl_err("start_lpn=%"PRIu64",tt_pgs=%d\n", start_lpn, ssd->sp.tt_pgs);
     }
 
+    req->gcrt = 0; //g-gc-remaining time
 #define COME_FLAG  1024
-#define Back_FLAG   2048
+#define Back_FLAG1   2048
 
-    if(req->nvm_usrflag == COME_FLAG){
-        req->nvm_usrflag = 2048;
-    }
+    // // femu_debug("Ftl-req->usrflag:%llu\n",req->nvm_usrflag);
+    // if(req->nvm_usrflag == 1024){
+    //     femu_log("Ftl: req->nvme_usrflag:%llu\n",req->nvm_usrflag);
+    // }
+    // if(req->nvm_usrflag == COME_FLAG){
+    //     req->nvm_usrflag = Back_FLAG1;
+    // }
+    // else {
+    //     req->nvm_usrflag = Back_FLAG2;
+    // }
+    
+#define NVME_RECON_SIG  (1024) //gql-RECONSITUTE SIGNAL
+#define NVME_FAILED_REQ  (408) //gql-failed request code
+#define NVME_FFAIL_SIG (911)  //gql-启用fast-fail机制
+    if (req->nvm_usrflag == NVME_FFAIL_SIG) {//g-如果IO被阻塞掉，启动fast-fail过程
+        /* fastfail IO path */
+        for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+            ppa = get_maptbl_ent(ssd, lpn);
+            if (!mapped_ppa(&ppa) || !valid_ppa(ssd, &ppa)) {
+                continue;
+            }
 
-    /* normal IO read path */
-    for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
-        ppa = get_maptbl_ent(ssd, lpn);
-        if (!mapped_ppa(&ppa) || !valid_ppa(ssd, &ppa)) {
-            //printf("%s,lpn(%" PRId64 ") not mapped to valid ppa\n", ssd->ssdname, lpn);
-            //printf("Invalid ppa,ch:%d,lun:%d,blk:%d,pl:%d,pg:%d,sec:%d\n",
-            //ppa.g.ch, ppa.g.lun, ppa.g.blk, ppa.g.pl, ppa.g.pg, ppa.g.sec);
-            continue;
+            lun = get_lun(ssd, &ppa);
+            if (req->stime < lun->gc_endtime) {
+                in_gc = true;
+                int tgcrt = lun->gc_endtime - req->stime;
+                if (req->gcrt < tgcrt) {
+                    req->gcrt = tgcrt;
+                }
+            } else {//g-读请求目标lun未执行gc操作，req->stime >= lun->gc_endtime
+                /* NoGC under fastfail path */
+                struct nand_cmd srd;
+                srd.cmd = NAND_READ;
+                srd.stime = req->stime;
+                sublat = ssd_advance_status(ssd, &ppa, &srd);
+                maxlat = (sublat > maxlat) ? sublat : maxlat;
+            }
         }
 
-        struct nand_cmd srd;
-        srd.type = USER_IO;
-        srd.cmd = NAND_READ;
-        srd.stime = req->stime;
-        sublat = ssd_advance_status(ssd, &ppa, &srd);
-        maxlat = (sublat > maxlat) ? sublat : maxlat;
-    }
+        if (!in_gc) {//g-如果请求定向设备不在gc中，req->gcrt==0，未被填充
+            assert(req->gcrt == 0);
+            return maxlat;
+        }
+        req->nvm_usrflag = NVME_FAILED_REQ;
+        return 0;//g-io被阻塞，请求被fast-fail掉，置usrflag为NVME_FAILED_REQ
+    } else {
+        int max_gcrt = 0;
+        /* normal IO read path */
+        for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+            ppa = get_maptbl_ent(ssd, lpn);
+            if (!mapped_ppa(&ppa) || !valid_ppa(ssd, &ppa)) {
+                //printf("%s,lpn(%" PRId64 ") not mapped to valid ppa\n", ssd->ssdname, lpn);
+                //printf("Invalid ppa,ch:%d,lun:%d,blk:%d,pl:%d,pg:%d,sec:%d\n",
+                //ppa.g.ch, ppa.g.lun, ppa.g.blk, ppa.g.pl, ppa.g.pg, ppa.g.sec);
+                continue;
+            }
+
+            lun = get_lun(ssd, &ppa);//g-不执行fastfail机制的话，依然会统计被GC阻塞的io数量，但是不会更新req->gcrt
+            if (req->stime < lun->gc_endtime && max_gcrt < lun->gc_endtime - req->stime) {
+				max_gcrt = lun->gc_endtime - req->stime;
+            }
+
+            struct nand_cmd srd;
+            srd.type = USER_IO;
+            srd.cmd = NAND_READ;
+            srd.stime = req->stime;
+            sublat = ssd_advance_status(ssd, &ppa, &srd);
+            maxlat = (sublat > maxlat) ? sublat : maxlat;
+        }
 
     return maxlat;
+    }
 }
 
 static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
@@ -828,7 +921,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
 
     while (should_gc_high(ssd)) {
         /* perform GC here until !should_gc(ssd) */
-        r = do_gc(ssd, true);
+        r = do_gc(ssd, true, NULL);
         if (r == -1)
             break;
     }
@@ -899,6 +992,9 @@ static void *ftl_thread(void *arg)
                 break;
             case NVME_CMD_READ:
                 lat = ssd_read(ssd, req);
+                // if (lat > 1e9) {
+                //     printf("FEMU: Read latency is > 1s, what's going on!\n");
+                // }
                 break;
             case NVME_CMD_DSM:
                 lat = 0;
@@ -918,7 +1014,7 @@ static void *ftl_thread(void *arg)
 
             /* clean one line if needed (in the background) */
             if (should_gc(ssd)) {
-                do_gc(ssd, false);
+                do_gc(ssd, false, req);
             }
         }
     }

@@ -67,7 +67,7 @@ static void nvme_process_sq_io(void *opaque, int index_poller)
         req->cqe.cid = cmd.cid;
         req->cmd_opcode = cmd.opcode;
         memcpy(&req->cmd, &cmd, sizeof(NvmeCmd));
-        /*Gtodo - 传递信息到req当中去*/
+        /*Gtodo - gql-传递信息到req当中去*/
         req->nvm_usrflag =((NvmeRwCmd *)&cmd)->rsvd2;
 
         if (n->print_log) {
@@ -104,7 +104,7 @@ static void nvme_post_cqe(NvmeCQueue *cq, NvmeRequest *req)
     uint8_t phase = cq->phase;
     hwaddr addr;
 
-    cqe->res64 = req->nvm_usrflag;
+    cqe->res64 = req->nvm_usrflag;/*gql-返回处理结果给上层*/
 
     if (n->print_log) {
         femu_debug("%s,req,lba:%lu,lat:%lu\n", n->devname, req->slba, req->reqlat);

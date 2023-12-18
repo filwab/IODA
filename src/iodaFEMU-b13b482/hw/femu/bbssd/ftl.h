@@ -42,6 +42,27 @@ enum {
     FEMU_RESET_ACCT = 5,
     FEMU_ENABLE_LOG = 6,
     FEMU_DISABLE_LOG = 7,
+
+    FEMU_SYNC_GC = 8,
+    FEMU_UNSYNC_GC = 9,
+
+    FEMU_ENABLE_LOG_FREE_BLOCKS = 10,
+    FEMU_DISABLE_LOG_FREE_BLOCKS = 11,
+
+    FEMU_WINDOW_1S = 12,
+    FEMU_WINDOW_100MS = 13,
+    FEMU_WINDOW_2S = 14,
+    FEMU_WINDOW_10MS = 15,
+    FEMU_WINDOW_40MS = 16,
+    FEMU_WINDOW_200MS = 17,
+    FEMU_WINDOW_400MS = 18,
+
+    FEMU_ENABLE_DYNAMIC_GC_SYNC = 19,
+    FEMU_DISABLE_DYNAMIC_GC_SYNC = 20,
+
+
+
+	FEMU_PRINT_AND_RESET_COUNTERS = 23,
 };
 
 
@@ -128,6 +149,11 @@ struct ssdparams {
     double gc_thres_pcent_high;
     int gc_thres_lines_high;
     bool enable_gc_delay;
+    /*gql-enable gc window*/
+    bool enable_gc_sync;
+    int gc_sync_window;
+    
+
 
     /* below are all calculated values */
     int secs_per_blk; /* # of sectors per block */
@@ -194,6 +220,8 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
+#define SSD_NUM (5)
+
 struct ssd {
     char *ssdname;
     struct ssdparams sp;
@@ -203,12 +231,23 @@ struct ssd {
     struct write_pointer wp;
     struct line_mgmt lm;
 
+    /*gql-params for gc-control*/
+    uint16_t id; /* unique id for synchronization */
+    int num_gc_in_s;
+    int num_valid_pages_copied_s;
+    uint64_t next_ssd_avail_time;
+    uint64_t earliest_ssd_lun_avail_time;
+
+
+
     /* lockless ring for communication with NVMe IO thread */
     struct rte_ring **to_ftl;
     struct rte_ring **to_poller;
     bool *dataplane_started_ptr;
     QemuThread ftl_thread;
 };
+
+extern uint16_t ssd_id_cnt;
 
 void ssd_init(FemuCtrl *n);
 
