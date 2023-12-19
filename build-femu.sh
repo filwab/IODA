@@ -34,7 +34,7 @@ if [ -e ${IODA_FEMU_BIN} ]; then
     echo "===> ${green}Congrats${reset}, IODA FEMU is successfully built!"
     echo ""
     echo "Please check the compiled binaries:"
-    echo "  - iodaFEMU-b13b482 at [${blue}${IODA_FEMU_BIN}${reset}] (only for running "ioda" mode experiments)"
+    echo "  - iodaFEMU-b13b482 at [${blue}${IODA_FEMU_BIN}${reset}]"
     echo ""
 else
     echo ""

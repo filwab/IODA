@@ -380,7 +380,7 @@ void ssd_init(FemuCtrl *n)
     ssd->id = ssd_id_cnt;
 	ssd_array[ssd->id] = ssd;
     ssd_id_cnt++;
-    //ftl_log("GCSYNC SSD initialized with id %d\n", ssd->id);
+    ftl_log("GCSYNC SSD initialized with id %d\n", ssd->id);
 	ssd->next_ssd_avail_time = 0;
 	ssd->earliest_ssd_lun_avail_time = UINT64_MAX;
 	gc_endtime_array[ssd->id] = 0;
