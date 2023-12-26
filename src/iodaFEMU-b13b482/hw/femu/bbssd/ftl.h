@@ -57,12 +57,14 @@ enum {
     FEMU_WINDOW_200MS = 17,
     FEMU_WINDOW_400MS = 18,
 
-    FEMU_ENABLE_DYNAMIC_GC_SYNC = 19,
-    FEMU_DISABLE_DYNAMIC_GC_SYNC = 20,
-
-
+    FEMU_FAST_FAIL_SWITCH = 19,
+    FEMU_STRAID_DEBUG_SWITCH = 20,
 
 	FEMU_PRINT_AND_RESET_COUNTERS = 23,
+
+    FEMU_PRINT_CONFIG =25,
+
+
 };
 
 
@@ -152,6 +154,9 @@ struct ssdparams {
     /*gql-enable gc window*/
     bool enable_gc_sync;
     int gc_sync_window;
+
+    int fast_fail;
+    int straid_debug;
     
 
 

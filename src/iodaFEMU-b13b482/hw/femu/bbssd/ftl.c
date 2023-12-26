@@ -1,12 +1,28 @@
 #include "ftl.h"
+#include <stdint.h>
 
 //#define FEMU_DEBUG_FTL
 
 uint16_t ssd_id_cnt = 0;//g-盘数量
 struct ssd *ssd_array[SSD_NUM];//g-包含了 SSD_NUM 个ssd的结构体数组
-uint64_t gc_endtime_array[SSD_NUM];
+uint64_t gc_endtime_array[SSD_NUM];//g-原ioda中用于统计阵列中盘同时gc的频率和情况
 
 static void *ftl_thread(void *arg);
+
+static inline uint64_t get_low32(uint64_t data)
+{
+    return (data & 0xFFFFFFFF);
+
+}
+static inline uint64_t get_high32(uint64_t data)
+{
+    return (data >> 32);
+
+}
+static inline uint64_t set_low32(uint64_t data, uint64_t low32)
+{
+    return ((data & 0xFFFFFFFF00000000) | (low32 & 0xFFFFFFFF));
+}
 
 static inline bool should_gc(struct ssd *ssd)
 {
@@ -243,7 +259,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->secsz = 512;
     spp->secs_per_pg = 8;
     spp->pgs_per_blk = 256;
-    spp->blks_per_pl = 256; /* 16GB */
+    spp->blks_per_pl = 320; /* gql-16GB-to-20GB */
     spp->pls_per_lun = 1;
     spp->luns_per_ch = 8;
     spp->nchs = 8;
@@ -288,7 +304,8 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->enable_gc_delay = true;
     spp->enable_gc_sync = false;
     spp->gc_sync_window = 100;
-
+    spp->fast_fail = 0;
+    spp->straid_debug = 0;
 
     check_params(spp);
 }
@@ -763,6 +780,9 @@ static int do_gc(struct ssd *ssd, bool force, NvmeRequest *req)
         // Synchronizing Time Window logic
         int time_window_ms = ssd->sp.gc_sync_window;
         if (ssd->id != (now_ms/time_window_ms) % ssd_id_cnt) {
+            if (ssd->sp.straid_debug) {
+                ftl_log("GC-FAILED: ssd->id=%d,now_ms=%d,time_window_ms=%d\n", ssd->id, now_ms, time_window_ms);
+            }
             return 0;
         }
     }
@@ -843,8 +863,12 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
 #define NVME_RECON_SIG  (1024) //gql-RECONSITUTE SIGNAL
 #define NVME_FAILED_REQ  (408) //gql-failed request code
 #define NVME_FFAIL_SIG (911)  //gql-启用fast-fail机制
-    if (req->nvm_usrflag == NVME_FFAIL_SIG) {//g-如果IO被阻塞掉，启动fast-fail过程
+//取出nvm_usrflag的低32位进行判断
+    if (get_low32(req->nvm_usrflag) == NVME_FFAIL_SIG && ssd->sp.fast_fail) {//g--fast-fail的io路径
         /* fastfail IO path */
+        if(ssd->sp.straid_debug){
+            ftl_log("fast-fail-io: req->nvme_usrflag-high32:%lu,low32:%lu,\n",get_high32(req->nvm_usrflag),get_low32(req->nvm_usrflag));
+        }
         for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
             ppa = get_maptbl_ent(ssd, lpn);
             if (!mapped_ppa(&ppa) || !valid_ppa(ssd, &ppa)) {
@@ -872,9 +896,14 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
             assert(req->gcrt == 0);
             return maxlat;
         }
-        req->nvm_usrflag = NVME_FAILED_REQ;
-        return 0;//g-io被阻塞，请求被fast-fail掉，置usrflag为NVME_FAILED_REQ
+        /*请求遇到gc，fail掉- 将 NVME_FAILED_REQ填充到req->nvm_usrflag的低32位*/
+        req->nvm_usrflag = set_low32(req->nvm_usrflag, NVME_FAILED_REQ);
+        if (ssd->sp.straid_debug) {
+            ftl_log("FAILED IO : req->nvme_usrflag-high32:%lu,low32:%lu,\n",get_high32(req->nvm_usrflag),get_low32(req->nvm_usrflag));
+        }
+        return 0;
     } else {
+        //ftl_log("normal-io: req->nvme_usrflag-high32:%lu,low32:%lu,\n",get_high32(req->nvm_usrflag),get_low32(req->nvm_usrflag));
         int max_gcrt = 0;
         /* normal IO read path */
         for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
@@ -884,11 +913,6 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
                 //printf("Invalid ppa,ch:%d,lun:%d,blk:%d,pl:%d,pg:%d,sec:%d\n",
                 //ppa.g.ch, ppa.g.lun, ppa.g.blk, ppa.g.pl, ppa.g.pg, ppa.g.sec);
                 continue;
-            }
-
-            lun = get_lun(ssd, &ppa);//g-不执行fastfail机制的话，依然会统计被GC阻塞的io数量，但是不会更新req->gcrt
-            if (req->stime < lun->gc_endtime && max_gcrt < lun->gc_endtime - req->stime) {
-				max_gcrt = lun->gc_endtime - req->stime;
             }
 
             struct nand_cmd srd;

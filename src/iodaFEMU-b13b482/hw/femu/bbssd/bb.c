@@ -81,6 +81,24 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         ssd->sp.gc_sync_window = 100;
         break;
 
+    case FEMU_FAST_FAIL_SWITCH:
+        ssd->sp.fast_fail = 1 - ssd->sp.fast_fail ;
+        femu_log("%s,FEMU Fast-Fail value--(1)for on ,(0)for off:  %d\n", n->devname, ssd->sp.fast_fail);
+        break;
+
+    case FEMU_STRAID_DEBUG_SWITCH:
+        ssd->sp.straid_debug = 1- ssd->sp.straid_debug;
+        femu_log("%s,FEMU Straid-Debug value--(1)for on ,(0)for off:  %d\n", n->devname, ssd->sp.straid_debug);
+        break;
+    
+    case FEMU_PRINT_CONFIG:
+        femu_log("%s,FEMU Config: FEMU_GC_SYNC_WINDOW: %d,FEMU_SYNC_GC: %d, FEMU_FAST_FAIL: %d, FEMU_STRAID_DEBUG: %d\n", 
+                    n->devname,
+                    ssd->sp.gc_sync_window,
+                    ssd->sp.enable_gc_sync,
+                    ssd->sp.fast_fail,
+                    ssd->sp.straid_debug);
+        break;
 
     default:
         printf("FEMU:%s,Not implemented flip cmd (%lu)\n", n->devname, cdw10);
