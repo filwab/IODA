@@ -16,7 +16,7 @@ sudo ${IODA_FEMU} \
     -name "iodaVM" \
     -cpu host \
     -smp 64 \
-    -m 16G \
+    -m 24G \
     -enable-kvm \
     -boot menu=on \
     -drive file=${IODA_IMGDIR}/ioda.qcow2,if=virtio,cache=none,format=qcow2 \

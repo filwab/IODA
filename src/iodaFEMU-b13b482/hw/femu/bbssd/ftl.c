@@ -401,6 +401,17 @@ void ssd_init(FemuCtrl *n)
 	ssd->next_ssd_avail_time = 0;
 	ssd->earliest_ssd_lun_avail_time = UINT64_MAX;
 	gc_endtime_array[ssd->id] = 0;
+
+    /*gql-utilizition params initial*/
+    ssd->nand_utilization_log = 0;
+    ssd->nand_end_time = 0;
+    ssd->nand_read_pgs = 0;
+    ssd->nand_write_pgs = 0;
+    ssd->nand_erase_blks = 0;
+    ssd->gc_read_pgs = 0;
+    ssd->gc_write_pgs = 0;
+    ssd->gc_erase_blks = 0;
+
     /* initialize ssd internal layout architecture */
     ssd->ch = g_malloc0(sizeof(struct ssd_channel) * spp->nchs);
     for (int i = 0; i < spp->nchs; i++) {
@@ -559,6 +570,42 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct
 	if (lun->next_lun_avail_time < ssd->earliest_ssd_lun_avail_time) {
 		ssd->earliest_ssd_lun_avail_time = lun->next_lun_avail_time;
 	}
+
+    if (ssd->nand_utilization_log) {
+        if (nand_stime > ssd->nand_end_time) {
+            ftl_log("%s ~%lus, r%lu w%lu e%lu %lu%%, [r%lu w%lu e%lu %lu%%]\n",
+                    ssd->ssdname, ssd->nand_end_time / 1000000000,
+                    ssd->nand_read_pgs, ssd->nand_write_pgs, ssd->nand_erase_blks,
+                    100 *
+                        (ssd->nand_read_pgs * (uint64_t)spp->pg_rd_lat +
+                            ssd->nand_write_pgs * (uint64_t)spp->pg_wr_lat +
+                            ssd->nand_erase_blks * (uint64_t)spp->blk_er_lat) /
+                        ((uint64_t)NAND_DIFF_TIME * (uint64_t)spp->tt_luns),
+                    ssd->gc_read_pgs, ssd->gc_write_pgs, ssd->gc_erase_blks,
+                    100 *
+                        (ssd->gc_read_pgs * (uint64_t)spp->pg_rd_lat +
+                            ssd->gc_write_pgs * (uint64_t)spp->pg_wr_lat +
+                            ssd->gc_erase_blks * (uint64_t)spp->blk_er_lat) /
+                        ((uint64_t)NAND_DIFF_TIME * (uint64_t)spp->tt_luns));
+            ssd->nand_end_time =
+                nand_stime - nand_stime % NAND_DIFF_TIME + NAND_DIFF_TIME;
+            ssd->gc_read_pgs = 0;
+            ssd->gc_write_pgs = 0;
+            ssd->gc_erase_blks = 0;
+            ssd->nand_read_pgs = 0;
+            ssd->nand_write_pgs = 0;
+            ssd->nand_erase_blks = 0;
+        }
+        if (ncmd->type == GC_IO) {
+            ssd->gc_read_pgs += (c == NAND_READ);
+            ssd->gc_write_pgs += (c == NAND_WRITE);
+            ssd->gc_erase_blks += (c == NAND_ERASE);
+        }
+        ssd->nand_read_pgs += (c == NAND_READ);
+        ssd->nand_write_pgs += (c == NAND_WRITE);
+        ssd->nand_erase_blks += (c == NAND_ERASE);
+    }
+
 
     return lat;
 }

@@ -91,6 +91,28 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         femu_log("%s,FEMU Straid-Debug value--(1)for on ,(0)for off:  %d\n", n->devname, ssd->sp.straid_debug);
         break;
     
+    case NORMAL_MOD:
+        ssd->sp.enable_gc_sync = false;
+        ssd->sp.fast_fail = 0;
+        ssd->sp.straid_debug = 0;
+        femu_log("%s, gc_sync: off, fast_fail: off ,straid_debug: off\n",
+                n->devname);
+        break;
+    
+    case RECONS_MOD:
+        ssd->sp.enable_gc_sync = true;
+        ssd->sp.fast_fail = 1;
+        ssd->sp.straid_debug = 0;
+        femu_log("%s, gc_sync: on, fast_fail: on ,straid_debug: off\n",
+                n->devname);
+        break;
+    
+    case FEMU_NAND_UTILIZATION_LOG:
+        ssd->nand_utilization_log = 1 - ssd->nand_utilization_log;
+        femu_log("%s, FEMU_NAND_UTILIZATION_LOG TOGGLE, current value: %d\n",
+                n->devname, ssd->nand_utilization_log);
+        break;
+
     case FEMU_PRINT_CONFIG:
         femu_log("%s,FEMU Config: FEMU_GC_SYNC_WINDOW: %d,FEMU_SYNC_GC: %d, FEMU_FAST_FAIL: %d, FEMU_STRAID_DEBUG: %d\n", 
                     n->devname,

@@ -60,7 +60,12 @@ enum {
     FEMU_FAST_FAIL_SWITCH = 19,
     FEMU_STRAID_DEBUG_SWITCH = 20,
 
+    NORMAL_MOD = 21,
+    RECONS_MOD = 22,
+
 	FEMU_PRINT_AND_RESET_COUNTERS = 23,
+
+    FEMU_NAND_UTILIZATION_LOG = 24,
 
     FEMU_PRINT_CONFIG =25,
 
@@ -243,7 +248,15 @@ struct ssd {
     uint64_t next_ssd_avail_time;
     uint64_t earliest_ssd_lun_avail_time;
 
-
+    /*gql- for utilizition use */
+    uint32_t nand_utilization_log;
+    uint64_t nand_end_time;
+    uint64_t nand_read_pgs;
+    uint64_t nand_write_pgs;
+    uint64_t nand_erase_blks;
+    uint64_t gc_read_pgs;
+    uint64_t gc_write_pgs;
+    uint64_t gc_erase_blks;
 
     /* lockless ring for communication with NVMe IO thread */
     struct rte_ring **to_ftl;
@@ -251,6 +264,9 @@ struct ssd {
     bool *dataplane_started_ptr;
     QemuThread ftl_thread;
 };
+
+// 1s
+#define NAND_DIFF_TIME  (1000000000)
 
 extern uint16_t ssd_id_cnt;
 
