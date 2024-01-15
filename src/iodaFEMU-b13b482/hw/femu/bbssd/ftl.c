@@ -297,7 +297,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->tt_lines = spp->blks_per_lun; /* TODO: to fix under multiplanes */
 
     /*gql- gc threshold and windows control */
-    spp->gc_thres_pcent = 0.90;
+    spp->gc_thres_pcent = 0.75;
     spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
     spp->gc_thres_pcent_high = 0.95;
     spp->gc_thres_lines_high = (int)((1 - spp->gc_thres_pcent_high) * spp->tt_lines);
@@ -762,7 +762,7 @@ static struct line *select_victim_line(struct ssd *ssd, bool force)
     }
 
     /*gql- change 8 to 4 当line中无效页面的数量小于行中总页面数量的25%（即1/4）时，才会考虑对这个行进行垃圾回收*/
-    if (!force && victim_line->ipc < ssd->sp.pgs_per_line / 4) {
+    if (!force && victim_line->ipc < ssd->sp.pgs_per_line / 8) {
         return NULL;
     }
 
