@@ -6,6 +6,8 @@
 # Note: Please cd into IODA-SOSP21-AE/ first, and then run "./build-femu.sh"
 #
 
+num=${1:-5}
+
 IODA_TOPDIR=$(pwd)
 
 IODA_BUILD_LOG=${IODA_TOPDIR}"/ioda-femu-build.log"
@@ -14,6 +16,9 @@ red=`tput setaf 1`
 green=`tput setaf 2`
 blue=`tput setaf 4`
 reset=`tput sgr0`
+
+FTL_FILE="${IODA_TOPDIR}/src/iodaFEMU-b13b482/hw/femu/bbssd/ftl.h"
+sed -i "s/^#define SSD_NUM .*/#define SSD_NUM (${num})/" ${FTL_FILE}
 
 # Build iodaFEMU-b13b482
 echo ""
