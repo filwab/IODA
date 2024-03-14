@@ -122,6 +122,35 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
                     ssd->sp.straid_debug);
         break;
 
+    case FEMU_PRINT_AND_RESET_COUNTERS:
+        femu_log("FEMU_PRINT_AND_RESET_COUNTERS\n");
+        printf("SSD%d:", ssd->id);
+        for (int i = 0; i <= SSD_NUM; i++) {
+            printf(" %dGC %d,", i, ssd->num_reads_blocked_by_gc[i]);
+        }
+        printf("\n");
+
+        // for (int i = 0; i <= SSD_NUM; i++) {
+        //     printf(" %dGC %.4f, ", i, (float)ssd->num_reads_blocked_by_gc[i] * 100 / ssd->total_reads);
+        // }
+        // printf("\n");
+
+        printf("total_gc:%d ,  total_reads:%d\n", ssd->total_gcs,ssd->total_reads );
+        printf("total_nor:%d ,  total_block:%d ,  total_recon:%d ,  total_rebl:%d\n",ssd->reads_nor,ssd->reads_block,ssd->reads_recon,ssd->reads_reblk);
+
+        //gql-清除数据
+        for (int i = 0; i <= SSD_NUM; i++) {
+            ssd->num_reads_blocked_by_gc[i] = 0;
+        }
+        //gql-重置gcs，reads for block nor recon rebl
+        ssd->total_reads = 0;
+        ssd->total_gcs = 0;
+        ssd->reads_block = 0;
+        ssd->reads_nor = 0;
+        ssd->reads_recon = 0;
+        ssd->reads_reblk = 0;
+        break;
+
     default:
         printf("FEMU:%s,Not implemented flip cmd (%lu)\n", n->devname, cdw10);
     }

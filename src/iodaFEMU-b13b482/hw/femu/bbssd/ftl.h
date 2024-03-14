@@ -69,7 +69,7 @@ enum {
 
     FEMU_PRINT_CONFIG =25,
 
-
+    
 };
 
 
@@ -230,7 +230,7 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
-#define SSD_NUM (5)
+#define SSD_NUM (7)
 
 struct ssd {
     char *ssdname;
@@ -247,6 +247,17 @@ struct ssd {
     int num_valid_pages_copied_s;
     uint64_t next_ssd_avail_time;
     uint64_t earliest_ssd_lun_avail_time;
+
+    /*gql-读请求相关测试分析指标统计*/
+    // For recording # FEMU level reads blocked by GC
+    int total_reads;
+    int num_reads_blocked_by_gc[SSD_NUM + 1];
+    int total_gcs; //total gc num
+    int reads_nor; //normal path reads num
+    int reads_block; //blocked reads num
+    int reads_recon; //reconstructed reads num
+    int reads_reblk; //blocked reconstructed reads num
+
 
     /*gql- for utilizition use */
     uint32_t nand_utilization_log;
