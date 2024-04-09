@@ -282,6 +282,7 @@ struct ssd {
 extern uint16_t ssd_id_cnt;
 
 void ssd_init(FemuCtrl *n);
+void ssd_reset_state(struct ssd *ssd);
 
 #ifdef FEMU_DEBUG_FTL
 #define ftl_debug(fmt, ...) \

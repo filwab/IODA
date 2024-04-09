@@ -446,6 +446,92 @@ void ssd_init(FemuCtrl *n)
     qemu_thread_create(&ssd->ftl_thread, "FEMU-FTL-Thread", ftl_thread, n,
                        QEMU_THREAD_JOINABLE);
 }
+void ssd_reset_state(struct ssd *ssd) {
+    struct ssdparams *spp = &ssd->sp;
+
+    ssd->next_ssd_avail_time = 0;
+    ssd->earliest_ssd_lun_avail_time = UINT64_MAX;
+    gc_endtime_array[ssd->id] = 0;
+
+    ssd->nand_utilization_log = 0;
+    ssd->nand_end_time = 0;
+    ssd->nand_read_pgs = 0;
+    ssd->nand_write_pgs = 0;
+    ssd->nand_erase_blks = 0;
+    ssd->gc_read_pgs = 0;
+    ssd->gc_write_pgs = 0;
+    ssd->gc_erase_blks = 0;
+
+    for (int i = 0; i <= SSD_NUM; i++) {
+        ssd->num_reads_blocked_by_gc[i] = 0;
+    }
+
+    ssd->total_reads = 0;
+    ssd->total_gcs = 0;
+    ssd->reads_nor = 0;
+    ssd->reads_block = 0;
+    ssd->reads_recon = 0;
+    ssd->reads_reblk = 0;
+
+    for (int i = 0; i < spp->nchs; i++) {
+        struct ssd_channel *ch = &ssd->ch[i];
+        ch->next_ch_avail_time = 0;
+        ch->busy = 0;
+
+        for (int j = 0; j < spp->luns_per_ch; j++) {
+            struct nand_lun *lun = &ch->lun[j];
+            lun->next_lun_avail_time = 0;
+            lun->busy = false;
+
+            for (int k = 0; k < spp->pls_per_lun; k++) {
+                struct nand_plane *pl = &lun->pl[k];
+
+                for (int l = 0; l < spp->blks_per_pl; l++) {
+                    struct nand_block *blk = &pl->blk[l];
+                    blk->ipc = 0;
+                    blk->vpc = 0;
+                    blk->erase_cnt = 0;
+                    blk->wp = 0;
+
+                    for (int m = 0; m < spp->pgs_per_blk; m++) {
+                        struct nand_page *pg = &blk->pg[m];
+                        pg->status = PG_FREE;
+                        for (int n = 0; n < pg->nsecs; n++) {
+                            pg->sec[n] = SEC_FREE;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < spp->tt_pgs; i++) {
+        ssd->maptbl[i].ppa = UNMAPPED_PPA;
+    }
+
+    for (int i = 0; i < spp->tt_pgs; i++) {
+        ssd->rmap[i] = INVALID_LPN;
+    }
+
+    struct line_mgmt *lm = &ssd->lm;
+    QTAILQ_INIT(&lm->free_line_list);
+    QTAILQ_INIT(&lm->full_line_list);
+    lm->free_line_cnt = 0;
+    for (int i = 0; i < lm->tt_lines; i++) {
+        struct line *line = &lm->lines[i];
+        line->ipc = 0;
+        line->vpc = 0;
+        line->pos = 0;
+        QTAILQ_INSERT_TAIL(&ssd->lm.free_line_list, line, entry);
+        lm->free_line_cnt++;
+    }
+    ftl_assert(lm->free_line_cnt == lm->tt_lines);
+    lm->victim_line_cnt = 0;
+    lm->full_line_cnt = 0;
+
+    ssd_init_write_pointer(ssd);
+
+}
 
 static inline bool valid_ppa(struct ssd *ssd, struct ppa *ppa)
 {
