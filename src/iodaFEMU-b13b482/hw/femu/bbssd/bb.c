@@ -92,6 +92,7 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         break;
     
     case NORMAL_MOD:
+        ssd->sp.buffer_read = 0;
         ssd->sp.enable_gc_sync = false;
         ssd->sp.fast_fail = 0;
         ssd->sp.straid_debug = 0;
@@ -100,10 +101,20 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         break;
     
     case RECONS_MOD:
+        ssd->sp.buffer_read = 0;
         ssd->sp.enable_gc_sync = true;
         ssd->sp.fast_fail = 1;
         ssd->sp.straid_debug = 0;
         femu_log("%s, gc_sync: on, fast_fail: on ,straid_debug: off\n",
+                n->devname);
+        break;
+
+    case BUFFER_MOD:
+        ssd->sp.buffer_read = 1;
+        ssd->sp.enable_gc_sync = false;
+        ssd->sp.fast_fail = 0;
+        ssd->sp.straid_debug = 0;
+        femu_log("%s, gc_sync: off, fast_fail: off ,straid_debug: off ,buffer_read: on\n",
                 n->devname);
         break;
     
@@ -114,12 +125,12 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         break;
 
     case FEMU_PRINT_CONFIG:
-        femu_log("%s,FEMU Config: FEMU_GC_SYNC_WINDOW: %d,FEMU_SYNC_GC: %d, FEMU_FAST_FAIL: %d, FEMU_STRAID_DEBUG: %d\n", 
+        femu_log("%s,FEMU Config: FEMU_GC_SYNC_WINDOW: %d,FEMU_SYNC_GC: %d, FEMU_FAST_FAIL: %d, FEMU_BUFFER_READ: %d\n", 
                     n->devname,
                     ssd->sp.gc_sync_window,
                     ssd->sp.enable_gc_sync,
                     ssd->sp.fast_fail,
-                    ssd->sp.straid_debug);
+                    ssd->sp.buffer_read);
         break;
 
     case FEMU_PRINT_AND_RESET_COUNTERS:

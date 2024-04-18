@@ -2,6 +2,7 @@
 #define __FEMU_FTL_H
 
 #include "../nvme.h"
+#include "./buffer.h"
 
 #define INVALID_PPA     (~(0ULL))
 #define INVALID_LPN     (~(0ULL))
@@ -68,6 +69,8 @@ enum {
     FEMU_NAND_UTILIZATION_LOG = 24,
 
     FEMU_PRINT_CONFIG =25,
+
+    BUFFER_MOD = 26,
 
     
 };
@@ -162,6 +165,9 @@ struct ssdparams {
 
     int fast_fail;
     int straid_debug;
+
+    /* buffer read*/
+    int buffer_read;
     
 
 
@@ -230,7 +236,15 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
-#define SSD_NUM (7)
+/* G-Dram_related */
+struct dram {
+    uint64_t dram_capacity;
+    struct buffer_info* buffer;
+    struct buffer_info* L_buffer;
+};
+
+#define SSD_NUM (8)
+
 
 struct ssd {
     char *ssdname;
@@ -240,6 +254,9 @@ struct ssd {
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
     struct write_pointer wp;
     struct line_mgmt lm;
+    
+    /*dram_control*/
+    struct dram dram;
 
     /*gql-params for gc-control*/
     uint16_t id; /* unique id for synchronization */
@@ -283,6 +300,23 @@ extern uint16_t ssd_id_cnt;
 
 void ssd_init(FemuCtrl *n);
 void ssd_reset_state(struct ssd *ssd);
+
+/*******************BUFFER-FUNC*******************/
+
+#define DRAM_CAPACITY (100*1024*1024) //100MB
+#define DRAM_READ_LATENCY (1000)
+#define DRAM_WRITE_LATENCY (1000)
+#define LPN_IN_1GB (256*1024)
+#define START_LPN_OP (16*256*1024)
+
+#define MAX_L_NODE (2048)
+
+uint64_t handle_buffer_read(struct ssd *ssd, struct ssd *target_ssd , uint64_t lpn, NvmeRequest *req);
+uint64_t read_from_ssd(struct ssd *ssd, struct ssd *target_ssd , uint64_t lpn, NvmeRequest *req);
+uint64_t write_to_buffer(struct ssd *ssd, struct ssd * target_ssd , uint64_t lpn, NvmeRequest *req);
+uint64_t read_from_buffer(struct ssd *ssd, struct ssd * target_ssd , uint64_t lpn, NvmeRequest *req);
+
+/****************BUFFER-FUNC-END*****************/
 
 #ifdef FEMU_DEBUG_FTL
 #define ftl_debug(fmt, ...) \

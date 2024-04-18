@@ -8,6 +8,9 @@ struct ssd *ssd_array[SSD_NUM];//g-包含了 SSD_NUM 个ssd的结构体数组
 uint64_t gc_endtime_array[SSD_NUM];//g-原ioda中用于统计阵列中盘同时gc的频率和情况
 
 static void *ftl_thread(void *arg);
+static uint64_t Idle_buffer_read(struct ssd *ssd, struct ssd *target_ssd, uint64_t lpn, NvmeRequest *req);
+static uint64_t busy_buffer_read(struct ssd *ssd, struct ssd *target_ssd, uint64_t lpn, NvmeRequest *req);
+static int delete_from_buffer(struct ssd *ssd, uint64_t lpn);
 
 static inline uint64_t get_low32(uint64_t data)
 {
@@ -99,6 +102,12 @@ static inline size_t victim_line_get_pos(void *a)
 static inline void victim_line_set_pos(void *a, size_t pos)
 {
     ((struct line *)a)->pos = pos;
+}
+
+static inline struct buffer_group* buffer_search(tAVLTree *buffer, uint64_t lpn) {
+    struct buffer_group node;
+    node.key = lpn;
+    return (struct buffer_group*)avlTreeFind(buffer, (TREE_NODE *)&node);
 }
 
 static void ssd_init_lines(struct ssd *ssd)
@@ -306,6 +315,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->gc_sync_window = 100;
     spp->fast_fail = 0;
     spp->straid_debug = 0;
+    spp->buffer_read = 0;
 
     check_params(spp);
 }
@@ -384,6 +394,23 @@ static void ssd_init_rmap(struct ssd *ssd)
     }
 }
 
+static void init_dram(struct ssd *ssd)
+{
+    ssd->dram.dram_capacity= DRAM_CAPACITY;
+    /* initilize buffer table*/
+    ssd->dram.buffer = (tAVLTree*)avlTreeCreate((void*)keyCompareFunc, (void*)freeFunc);
+    ssd->dram.buffer->buffer_full_flag = 0;
+    ssd->dram.buffer->max_buffer_page = (unsigned int)(ssd->dram.dram_capacity / 4096);
+    ssd->dram.buffer->buffer_page_count = 0;
+
+    /* initilize L_buffer for LRU-2 algorithm*/
+    ssd->dram.L_buffer = (tAVLTree*)avlTreeCreate((void*)keyCompareFunc, (void*)freeFunc);
+    ssd->dram.L_buffer->buffer_full_flag = 0;
+    ssd->dram.L_buffer->max_buffer_page = MAX_L_NODE;
+    ssd->dram.L_buffer->buffer_page_count = 0;
+
+}
+
 void ssd_init(FemuCtrl *n)
 {
     struct ssd *ssd = n->ssd;
@@ -424,6 +451,8 @@ void ssd_init(FemuCtrl *n)
     ssd->reads_recon = 0; //重构读请求数量
     ssd->reads_reblk = 0; //重构被阻塞读请求数量
 
+    /* initialize dram */
+    init_dram(ssd);
 
     /* initialize ssd internal layout architecture */
     ssd->ch = g_malloc0(sizeof(struct ssd_channel) * spp->nchs);
@@ -593,6 +622,12 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
 {
     struct nand_block *blk = get_blk(ssd, ppa);
     return &(blk->pg[ppa->g.pg]);
+}
+
+static inline uint64_t lpn_trans(uint64_t lpn)
+{
+    /* Mapping user_lpn on one disc to 1GB of op space on another disc */
+    return (lpn % LPN_IN_1GB) + START_LPN_OP;
 }
 
 static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct
@@ -1072,30 +1107,47 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
             }
 
             lun = get_lun(ssd, &ppa);//g-不执行fastfail机制的话，依然会统计被GC阻塞的io数量，但是不会更新req->gcrt
-            if (req->stime < lun->gc_endtime && max_gcrt < lun->gc_endtime - req->stime) {
-				max_gcrt = lun->gc_endtime - req->stime;
+            //根据定向lun是否在gc，选择用哪种方式来执行本次读请求
+            if (ssd->sp.buffer_read)
+            {
+                if (req->stime < lun->gc_endtime) {
+                    sublat = Idle_buffer_read(ssd,ssd,lpn,req);    
+                } else {
+                    sublat = busy_buffer_read(ssd,ssd,lpn,req);
+                }
+            }
+            else {
+
+                if (req->stime < lun->gc_endtime && max_gcrt < lun->gc_endtime - req->stime) {
+                        max_gcrt = lun->gc_endtime - req->stime;
+                    }
+
+                struct nand_cmd srd;
+                srd.type = USER_IO;
+                srd.cmd = NAND_READ;
+                srd.stime = req->stime;
+                sublat = ssd_advance_status(ssd, &ppa, &srd);
             }
 
-            struct nand_cmd srd;
-            srd.type = USER_IO;
-            srd.cmd = NAND_READ;
-            srd.stime = req->stime;
-            sublat = ssd_advance_status(ssd, &ppa, &srd);
-            maxlat = (sublat > maxlat) ? sublat : maxlat;
+            maxlat = (sublat > maxlat) ? sublat : maxlat;   
         }
 
-        if (max_gcrt > 0){
-            ssd->reads_reblk++;//reconstruct read io blocked by gc for the second time
-        }      
-        ssd->reads_recon++;  //reconstruct read io finished normally
+        if (ssd->sp.fast_fail)
+        {
+            if (max_gcrt > 0){
+                ssd->reads_reblk++;//reconstruct read io blocked by gc for the second time
+            }      
+            ssd->reads_recon++;  //reconstruct read io finished normally
 
-        //gql- how many ssds are in gc when reconstructed read-io comes， 
-        for (int i = 0; i < ssd_id_cnt; i++) {
-            if (req->stime < gc_endtime_array[i]) {
-                num_concurrent_gcs++;
+            //gql- how many ssds are in gc when reconstructed read-io comes， 
+            for (int i = 0; i < ssd_id_cnt; i++) {
+                if (req->stime < gc_endtime_array[i]) {
+                    num_concurrent_gcs++;
+                }
             }
+            ssd->num_reads_blocked_by_gc[num_concurrent_gcs]++;
         }
-        ssd->num_reads_blocked_by_gc[num_concurrent_gcs]++;
+
         
         return maxlat;
     }
@@ -1132,6 +1184,10 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
             set_rmap_ent(ssd, INVALID_LPN, &ppa);
         }
 
+        if (ssd->sp.buffer_read)
+        {
+            delete_from_buffer(ssd,lpn);
+        }
         /* new write */
         ppa = get_new_page(ssd);
         /* update maptbl */
@@ -1220,3 +1276,241 @@ static void *ftl_thread(void *arg)
     return NULL;
 }
 
+
+static void ssd_remove_node(struct ssd *target_ssd,tAVLTree *buffer)
+{
+    uint64_t evicted_lpn = buffer->buffer_tail->key;
+    struct ppa ppa = get_maptbl_ent(target_ssd, evicted_lpn);
+    if (mapped_ppa(&ppa)) {
+        /* update old page information first */
+        mark_page_invalid(target_ssd, &ppa);
+        set_rmap_ent(target_ssd, INVALID_LPN, &ppa);
+    }
+}
+
+static uint64_t Idle_buffer_read(struct ssd *ssd, struct ssd *target_ssd, uint64_t lpn, NvmeRequest *req)
+{
+    uint64_t lat = 0;
+    struct ppa ppa = get_maptbl_ent(ssd, lpn);
+    if (mapped_ppa(&ppa) && valid_ppa(ssd, &ppa)) {
+        struct nand_cmd srd;
+        srd.type = USER_IO;
+        srd.cmd = NAND_READ;
+        srd.stime = req->stime;
+        lat += ssd_advance_status(ssd, &ppa, &srd);
+    }
+    tAVLTree *buffer = ssd->dram.buffer;
+    struct buffer_group * node = buffer_search(buffer, lpn);
+    if (node == NULL)
+    {
+        tAVLTree *L_buffer = ssd->dram.L_buffer;
+        struct buffer_group * L_node = buffer_search(L_buffer, lpn);
+        if (L_node == NULL)//Lbuffer miss，不满足进入缓存区的条件
+        {
+            if(!L_buffer->buffer_full_flag)
+            {
+                create_new_bufnode(L_buffer, lpn);
+            }
+            else
+            {
+                dram_delete_buffer_node(L_buffer);
+                create_new_bufnode(L_buffer, lpn);
+            }
+
+        }
+        else //Lbuffer hit，识别为真热读数据，进入缓冲区
+        {
+
+            if (!buffer->buffer_full_flag)
+            {
+                create_new_bufnode(buffer, lpn);
+            }
+            else
+            {
+                //ssd_remove_node(target_ssd, buffer);/* mark the backup data invalid*/
+                dram_delete_buffer_node(buffer);
+                create_new_bufnode(buffer, lpn);
+            }
+
+            //write_to_buffer(ssd, target_ssd, lpn, req);/* write the read data to the backup space of another ssd */
+        }
+    }
+    else
+    {
+        LRU_Tofirst(buffer, node);
+    }
+    return lat;
+}
+
+static uint64_t busy_buffer_read(struct ssd *ssd, struct ssd *target_ssd, uint64_t lpn, NvmeRequest *req)
+{
+    uint64_t lat = 0;
+    tAVLTree *buffer = ssd->dram.buffer;
+    struct buffer_group * node = buffer_search(buffer, lpn);
+    if (node == NULL)
+    {
+        struct ppa ppa = get_maptbl_ent(ssd, lpn);
+        if (mapped_ppa(&ppa) && valid_ppa(ssd, &ppa)) {
+            struct nand_cmd srd;
+            srd.type = USER_IO;
+            srd.cmd = NAND_READ;
+            srd.stime = req->stime;
+            lat += ssd_advance_status(ssd, &ppa, &srd);
+        }
+
+        tAVLTree *L_buffer = ssd->dram.L_buffer;
+        struct buffer_group * L_node = buffer_search(L_buffer, lpn);
+        if (L_node == NULL)//Lbuffer miss，不满足进入缓存区的条件
+        {
+            if(!L_buffer->buffer_full_flag)
+            {
+                create_new_bufnode(L_buffer, lpn);
+            }
+            else
+            {
+                dram_delete_buffer_node(L_buffer);
+                create_new_bufnode(L_buffer, lpn);
+            }
+
+        }
+        else //Lbuffer hit，识别为真热读数据，进入缓冲区
+        {
+            if (!buffer->buffer_full_flag)
+            {
+                create_new_bufnode(buffer, lpn);
+            }
+            else
+            {
+                //ssd_remove_node(target_ssd, buffer);/* mark the backup data invalid*/
+                dram_delete_buffer_node(buffer);
+                create_new_bufnode(buffer, lpn);
+            }
+
+            //write_to_buffer(ssd, target_ssd, lpn, req);/* write the read data to the backup space of another ssd */
+        }
+    }
+    else
+    {
+        // lat += read_from_buffer(ssd, target_ssd, lpn, req);/* read the buffered data*/
+        lat += NAND_READ_LATENCY;
+        LRU_Tofirst(buffer, node);
+    }
+    return lat;
+}
+
+static int delete_from_buffer(struct ssd *ssd, uint64_t lpn)
+{
+    tAVLTree *buffer = ssd->dram.buffer;
+    struct buffer_group * node = buffer_search(buffer, lpn);
+    if (node != NULL)
+    {
+        //ssd_remove_node(target_ssd, buffer);/* mark the backup data invalid*/
+        dram_delete_buffer_node(buffer);
+        return 1;
+    }
+    return 0;
+}
+
+// uint64_t handle_buffer_read(struct ssd *ssd, struct ssd *target_ssd , uint64_t lpn, NvmeRequest *req)
+// {
+//     uint64_t lat = 0;
+
+//     tAVLTree *buffer = ssd->dram.buffer;
+
+//     struct buffer_group * node = buffer_search(buffer, lpn);
+
+//     if (node == NULL) {
+//         if (!buffer->buffer_full_flag)
+//         {
+//             create_new_bufnode(buffer, lpn);
+//         }
+//         else 
+//         {
+//             /*need  to mark the evcited node invalid for gc to clean it*/
+//             ssd_remove_node(target_ssd, buffer);//multi-thread-mark_page_invalid
+//             uint64_t evicted_lpn = buffer->buffer_tail->key;
+//             dram_delete_buffer_node(buffer);
+//             create_new_bufnode(buffer, lpn);
+//         }
+
+//         // read from SSD ,then return this latency
+//         //after this ,should write the data to the target ssd , ignore the latency(no really request here)。
+//         lat += read_from_ssd(ssd, target_ssd, lpn, req);
+//         //处理lpn到一个盘的op空间的ppn中去，并且保证查找的时候lpn对应的LUN的id为同一个，模拟在备份中读数据的GC干扰性
+//         //multi-thread-maptal。
+//         write_to_buffer(ssd, target_ssd, lpn, req);//actually, buffer means the backup space of another ssd.
+//         return (lat);
+//     }
+//     else {
+
+//         lat += read_from_buffer(ssd, target_ssd, lpn, req);
+        
+//         LRU_Tofirst(buffer, node);
+
+//         return lat;// read from ssd ,depends on thr real letency not the DRAM_READ_LATENCY
+//     }
+
+
+// }
+
+uint64_t read_from_ssd(struct ssd *ssd, struct ssd *target_ssd , uint64_t lpn, NvmeRequest *req)
+{
+    uint64_t lat=0;
+    struct ppa ppa = get_maptbl_ent(ssd, lpn);
+    if (mapped_ppa(&ppa) && valid_ppa(ssd, &ppa)) {
+        struct nand_cmd srd;
+        srd.type = USER_IO;
+        srd.cmd = NAND_READ;
+        srd.stime = req->stime;
+        lat += ssd_advance_status(ssd, &ppa, &srd);
+    }
+    return lat;
+}
+
+uint64_t write_to_buffer(struct ssd *ssd, struct ssd * target_ssd , uint64_t lpn, NvmeRequest *req)
+{
+    // need to change ,the lpn cannot use get_maptbl_ent to get the ppa ,its backup space ,avoid using the user space.
+    uint64_t lat = 0;
+    uint64_t nlpn = lpn_trans(lpn);/*Map the lpn to 1GB backup space*/
+    struct ppa ppa = get_maptbl_ent(target_ssd, nlpn);
+    if (mapped_ppa(&ppa)) {
+        /* update old page information first */
+        mark_page_invalid(target_ssd, &ppa);
+        set_rmap_ent(target_ssd, INVALID_LPN, &ppa);
+    }
+    /* new write */
+    ppa = get_new_page(target_ssd);
+    /* update maptbl */
+    set_maptbl_ent(target_ssd, lpn, &ppa);
+    /* update rmap */
+    set_rmap_ent(target_ssd, lpn, &ppa);
+
+    mark_page_valid(target_ssd, &ppa);
+
+    /* need to advance the write pointer here */
+    ssd_advance_write_pointer(target_ssd);
+
+    struct nand_cmd swr;
+    swr.type = USER_IO;
+    swr.cmd = NAND_WRITE;
+    swr.stime = req->stime;
+    /* get latency statistics */
+    lat += ssd_advance_status(target_ssd, &ppa, &swr);
+
+    return lat;
+}
+
+uint64_t read_from_buffer(struct ssd *ssd, struct ssd * target_ssd , uint64_t lpn, NvmeRequest *req)
+{
+    uint64_t lat=0;
+    uint64_t nlpn = lpn_trans(lpn);
+    struct ppa ppa = get_maptbl_ent(target_ssd, nlpn);
+    if (mapped_ppa(&ppa) && valid_ppa(ssd, &ppa)) {
+        struct nand_cmd srd;
+        srd.type = USER_IO;
+        srd.cmd = NAND_READ;
+        srd.stime = req->stime;
+        lat += ssd_advance_status(target_ssd, &ppa, &srd);
+    }
+    return lat;   
+}
