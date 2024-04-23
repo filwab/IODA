@@ -117,6 +117,19 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         femu_log("%s, gc_sync: off, fast_fail: off ,straid_debug: off ,buffer_read: on\n",
                 n->devname);
         break;
+
+    case GROUP_GC_SWITCH:
+        ssd->sp.group_gc_sync = 1 - ssd->sp.group_gc_sync;
+        femu_log("%s,FEMU Group-GC-SYNC value--(1)for on ,(0)for off:  %d\n", n->devname, ssd->sp.group_gc_sync);
+        break;
+
+    case SHOW_GROUP_INFO:
+        femu_log("%s,GROUP INFO: GROUP_ID: %d,BK_SSD_ID: %d, GROUP_NUM: %d,\n", 
+            n->devname,
+            ssd->group_id,
+            ssd->bk_id,
+            (SSD_NUM / GROUP_SSD_NUM));
+        break;
     
     case FEMU_NAND_UTILIZATION_LOG:
         ssd->nand_utilization_log = 1 - ssd->nand_utilization_log;

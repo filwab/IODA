@@ -72,6 +72,10 @@ enum {
 
     BUFFER_MOD = 26,
 
+    GROUP_GC_SWITCH = 27,
+
+    SHOW_GROUP_INFO = 28,
+
     
 };
 
@@ -168,6 +172,7 @@ struct ssdparams {
 
     /* buffer read*/
     int buffer_read;
+    int group_gc_sync;
     
 
 
@@ -244,6 +249,7 @@ struct dram {
 };
 
 #define SSD_NUM (8)
+#define GROUP_SSD_NUM (2)
 
 
 struct ssd {
@@ -285,6 +291,10 @@ struct ssd {
     uint64_t gc_read_pgs;
     uint64_t gc_write_pgs;
     uint64_t gc_erase_blks;
+
+    /*gql- for group_gc_control */
+    uint16_t bk_id; /* id of ssd for backup hot read data */
+    uint16_t group_id; /* which group ssd in */
 
     /* lockless ring for communication with NVMe IO thread */
     struct rte_ring **to_ftl;

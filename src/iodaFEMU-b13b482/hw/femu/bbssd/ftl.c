@@ -316,6 +316,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->fast_fail = 0;
     spp->straid_debug = 0;
     spp->buffer_read = 0;
+    spp->group_gc_sync = 0;
 
     check_params(spp);
 }
@@ -422,6 +423,8 @@ void ssd_init(FemuCtrl *n)
 
     /*gql- assign ssd id for GC synchronization */
     ssd->id = ssd_id_cnt;
+    ssd->bk_id = (ssd_id_cnt + GROUP_SSD_NUM) % SSD_NUM;
+    ssd->group_id = (ssd_id_cnt / GROUP_SSD_NUM) ;
 	ssd_array[ssd->id] = ssd;
     ssd_id_cnt++;
     ftl_log("GCSYNC SSD initialized with id %d\n", ssd->id);
@@ -969,6 +972,18 @@ static int do_gc(struct ssd *ssd, bool force, NvmeRequest *req)
             return 0;
         }
     }
+
+    if (ssd->sp.group_gc_sync && !force) {//如果开启了group_gc同步，且盘空闲line未达到高阈值
+        // Group Synchronizing Time Window logic
+        int time_window_s = ssd->sp.gc_sync_window;
+        if (ssd->group_id != (now_s/time_window_s) % (SSD_NUM / GROUP_SSD_NUM)) {
+            if (ssd->sp.straid_debug) {
+                ftl_log("GROUP-GC-FAILED: ssd->group_id=%d,now_s=%d,time_window_s=%d\n", ssd->group_id, now_s, time_window_s);
+            }
+            return 0;
+        }
+    }
+     
 
     victim_line = select_victim_line(ssd, force);
     if (!victim_line) {
