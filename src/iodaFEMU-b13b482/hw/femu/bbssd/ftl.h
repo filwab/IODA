@@ -76,6 +76,7 @@ enum {
 
     SHOW_GROUP_INFO = 28,
 
+
     
 };
 
@@ -295,6 +296,13 @@ struct ssd {
     /*gql- for group_gc_control */
     uint16_t bk_id; /* id of ssd for backup hot read data */
     uint16_t group_id; /* which group ssd in */
+
+    /*gql- buffer statistic*/
+    uint64_t total_read_num;
+    uint64_t block_read_num;
+    uint64_t total_read_pages;
+    uint64_t buffer_page_num;
+    uint64_t buffer_block_pages;
 
     /* lockless ring for communication with NVMe IO thread */
     struct rte_ring **to_ftl;

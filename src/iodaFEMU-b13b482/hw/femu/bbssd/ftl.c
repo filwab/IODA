@@ -457,6 +457,12 @@ void ssd_init(FemuCtrl *n)
     /* initialize dram */
     init_dram(ssd);
 
+    ssd->total_read_num = 0;
+    ssd->block_read_num = 0;
+    ssd->total_read_pages = 0;
+    ssd->buffer_page_num = 0;
+    ssd->buffer_block_pages = 0;
+
     /* initialize ssd internal layout architecture */
     ssd->ch = g_malloc0(sizeof(struct ssd_channel) * spp->nchs);
     for (int i = 0; i < spp->nchs; i++) {
@@ -1041,6 +1047,8 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
     struct nand_lun *lun;
     bool in_gc = false; /* indicate whether any subIO met GC */
     int num_concurrent_gcs = 0;
+    /*gql-add for statistic*/
+    
 
     if (end_lpn >= spp->tt_pgs) {
         ftl_err("start_lpn=%"PRIu64",tt_pgs=%d\n", start_lpn, ssd->sp.tt_pgs);
@@ -1107,10 +1115,21 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
         }
 
         ssd->reads_block++;// blocked by first time
+
+        //how many ssds are in gc when a filed io ocurs
+        for (int i = 0; i < ssd_id_cnt; i++) {
+            if (req->stime < gc_endtime_array[i]) {
+                num_concurrent_gcs++;
+            }
+        }
+        ssd->num_reads_blocked_by_gc[num_concurrent_gcs]++;
+
         return 0;
     } else {
+        ssd->total_read_num++;
         //ftl_log("normal-io: req->nvme_usrflag-high32:%lu,low32:%lu,\n",get_high32(req->nvm_usrflag),get_low32(req->nvm_usrflag));
         int max_gcrt = 0;
+        bool sub_gc = false;
         /* normal IO read path */
         for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
             ppa = get_maptbl_ent(ssd, lpn);
@@ -1130,12 +1149,15 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
                 } else {
                     sublat = busy_buffer_read(ssd,ssd,lpn,req);
                 }
+                ssd->total_read_pages++;
             }
             else {
-
+                if (req->stime < lun->gc_endtime) {
+                    sub_gc = true;
+                }                   
                 if (req->stime < lun->gc_endtime && max_gcrt < lun->gc_endtime - req->stime) {
                         max_gcrt = lun->gc_endtime - req->stime;
-                    }
+                }
 
                 struct nand_cmd srd;
                 srd.type = USER_IO;
@@ -1147,20 +1169,22 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
             maxlat = (sublat > maxlat) ? sublat : maxlat;   
         }
 
-        if (ssd->sp.fast_fail)
-        {
-            if (max_gcrt > 0){
-                ssd->reads_reblk++;//reconstruct read io blocked by gc for the second time
-            }      
-            ssd->reads_recon++;  //reconstruct read io finished normally
-
-            //gql- how many ssds are in gc when reconstructed read-io comes， 
+        if(sub_gc){//blocked read in normal io path
+            ssd->block_read_num++;
             for (int i = 0; i < ssd_id_cnt; i++) {
                 if (req->stime < gc_endtime_array[i]) {
                     num_concurrent_gcs++;
                 }
             }
             ssd->num_reads_blocked_by_gc[num_concurrent_gcs]++;
+        }
+
+        if (ssd->sp.fast_fail)
+        {
+            if (max_gcrt > 0){
+                ssd->reads_reblk++;//reconstruct read io blocked by gc for the second time
+            }      
+            ssd->reads_recon++;  //reconstruct read io finished normally
         }
 
         
@@ -1407,8 +1431,12 @@ static uint64_t busy_buffer_read(struct ssd *ssd, struct ssd *target_ssd, uint64
     else
     {
         // lat += read_from_buffer(ssd, target_ssd, lpn, req);/* read the buffered data*/
+        if(req->stime < gc_endtime_array[ssd->bk_id]){
+            ssd->buffer_block_pages++;
+        }
         lat += NAND_READ_LATENCY;
         LRU_Tofirst(buffer, node);
+        ssd->buffer_page_num++;
     }
     return lat;
 }
