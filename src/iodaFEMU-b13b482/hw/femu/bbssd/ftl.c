@@ -317,6 +317,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->straid_debug = 0;
     spp->buffer_read = 0;
     spp->group_gc_sync = 0;
+    spp->gc_streering = 0;
 
     check_params(spp);
 }
@@ -1434,7 +1435,13 @@ static uint64_t busy_buffer_read(struct ssd *ssd, struct ssd *target_ssd, uint64
         if(req->stime < gc_endtime_array[ssd->bk_id]){
             ssd->buffer_block_pages++;
         }
-        lat += NAND_READ_LATENCY;
+        if (req->stime < gc_endtime_array[ssd->bk_id] && ssd->sp.gc_streering)
+        {
+            lat += gc_endtime_array[ssd->bk_id] - req->stime;
+        }
+        else {
+            lat += NAND_READ_LATENCY;
+        }
         LRU_Tofirst(buffer, node);
         ssd->buffer_page_num++;
     }

@@ -6,7 +6,7 @@
 # Note: Please cd into IODA-SOSP21-AE/ first, and then run "./build-femu.sh"
 #
 
-num=${1:-5}
+num=${1:-8}
 
 IODA_TOPDIR=$(pwd)
 

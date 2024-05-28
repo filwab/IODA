@@ -76,8 +76,8 @@ enum {
 
     SHOW_GROUP_INFO = 28,
 
+    GC_STEERING_MOD = 29,
 
-    
 };
 
 
@@ -174,6 +174,7 @@ struct ssdparams {
     /* buffer read*/
     int buffer_read;
     int group_gc_sync;
+    int gc_streering;//buffer_only mode ,no group_gc control.
     
 
 

@@ -94,6 +94,7 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
     case NORMAL_MOD:
         ssd->sp.buffer_read = 0;
         ssd->sp.group_gc_sync = 0;
+        ssd->sp.gc_streering = 0;
         ssd->sp.enable_gc_sync = false;
         ssd->sp.fast_fail = 0;
         femu_log("%s, gc_sync: off, fast_fail: off, buffer_read: off ,group_gc: off \n",
@@ -103,6 +104,7 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
     case RECONS_MOD:
         ssd->sp.buffer_read = 0;
         ssd->sp.group_gc_sync = 0;
+        ssd->sp.gc_streering = 0;
         ssd->sp.enable_gc_sync = true;
         ssd->sp.fast_fail = 1;
         femu_log("%s, gc_sync: on, fast_fail: on, buffer_read: off ,group_gc: off \n",
@@ -112,6 +114,7 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
     case BUFFER_MOD:
         ssd->sp.buffer_read = 1;
         ssd->sp.group_gc_sync = 1;
+        ssd->sp.gc_streering = 0;
         ssd->sp.enable_gc_sync = false;
         ssd->sp.fast_fail = 0;
         femu_log("%s, gc_sync: off, fast_fail: off ,buffer_read: on ,group_gc: on \n",
@@ -131,6 +134,17 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
             (SSD_NUM / GROUP_SSD_NUM));
         break;
     
+    case GC_STEERING_MOD:
+        ssd->sp.buffer_read = 1;
+        ssd->sp.group_gc_sync = 0;
+        ssd->sp.gc_streering = 1;
+        ssd->sp.enable_gc_sync = false;
+        ssd->sp.fast_fail = 0;
+        femu_log("%s, gc_sync: off, fast_fail: off ,buffer_read: on ,group_gc: off,gc_steering: on  \n",
+                n->devname);
+        break;
+
+    
     case FEMU_NAND_UTILIZATION_LOG:
         ssd->nand_utilization_log = 1 - ssd->nand_utilization_log;
         femu_log("%s, FEMU_NAND_UTILIZATION_LOG TOGGLE, current value: %d\n",
@@ -138,13 +152,14 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         break;
 
     case FEMU_PRINT_CONFIG:
-        femu_log("%s,FEMU Config: GC_WINDOW: %d,SYNC_GC: %d, FAST_FAIL: %d, BUFFER_READ: %d, GROUP_GC: %d\n", 
+        femu_log("%s,FEMU Config: GC_WINDOW: %d,SYNC_GC: %d, FAST_FAIL: %d, BUFFER_READ: %d, GROUP_GC: %d,GC_STEERING: %d\n", 
                     n->devname,
                     ssd->sp.gc_sync_window,
                     ssd->sp.enable_gc_sync,
                     ssd->sp.fast_fail,
                     ssd->sp.buffer_read,
-                    ssd->sp.group_gc_sync);
+                    ssd->sp.group_gc_sync,
+                    ssd->sp.gc_streering);
         break;
 
     case FEMU_PRINT_AND_RESET_COUNTERS:
@@ -169,7 +184,7 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         }
         else{//BASE-mod
             printf("total_gc:%d ,  total_reads:%d\n", ssd->total_gcs,ssd->total_reads );
-            printf("total_reads:%d ,  block_reads:%d\n", ssd->total_gcs,ssd->total_reads );
+            printf("total_reads:%d ,  block_reads:%d\n", ssd->total_read_num,ssd->block_read_num );
         }
 
 
@@ -187,6 +202,7 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
 
         ssd->total_read_num = 0;
         ssd->total_read_pages = 0;
+        ssd->block_read_num = 0;
         ssd->buffer_page_num = 0;
         ssd->buffer_block_pages = 0;
         break;
