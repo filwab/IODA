@@ -78,6 +78,7 @@ enum {
 
     GC_STEERING_MOD = 29,
 
+    GRPGC_RECON_MOD = 30
 };
 
 
@@ -175,6 +176,9 @@ struct ssdparams {
     int buffer_read;
     int group_gc_sync;
     int gc_streering;//buffer_only mode ,no group_gc control.
+
+    /* group-gc mode plus ioda-reconstruct mod */
+    int grpgc_recon;
     
 
 

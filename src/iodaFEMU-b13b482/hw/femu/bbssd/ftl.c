@@ -319,6 +319,8 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->group_gc_sync = 0;
     spp->gc_streering = 0;
 
+    spp->grpgc_recon = 0;
+
     check_params(spp);
 }
 
@@ -1049,6 +1051,11 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
     bool in_gc = false; /* indicate whether any subIO met GC */
     int num_concurrent_gcs = 0;
     /*gql-add for statistic*/
+
+    /*gql- group_gc + ioda reconstruct mod*/
+    bool busy_miss = false; //gql-请求盘繁忙且无备份
+    bool one_recons = true; //gql- 只有请求盘在GC，其余盘未GC，可以重构该请求
+
     
 
     if (end_lpn >= spp->tt_pgs) {
@@ -1071,7 +1078,7 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
     // else {
     //     req->nvm_usrflag = Back_FLAG2;
     // }
-    
+#define NVME_NORMAL_REQ (0) //gql-normal request code
 #define NVME_RECON_SIG  (1024) //gql-RECONSITUTE SIGNAL
 #define NVME_FAILED_REQ  (408) //gql-failed request code
 #define NVME_FFAIL_SIG (911)  //gql-启用fast-fail机制
@@ -1141,16 +1148,24 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
                 continue;
             }
 
-            lun = get_lun(ssd, &ppa);//g-不执行fastfail机制的话，依然会统计被GC阻塞的io数量，但是不会更新req->gcrt
+            lun = get_lun(ssd, &ppa);
             //根据定向lun是否在gc，选择用哪种方式来执行本次读请求
             if (ssd->sp.buffer_read)
             {
-                if (req->stime < lun->gc_endtime) {
+                if (req->stime >= lun->gc_endtime) {//g-读请求目标lun未执行gc操作，req->stime >= lun->gc_endtime
                     sublat = Idle_buffer_read(ssd,ssd,lpn,req);    
                 } else {
                     sublat = busy_buffer_read(ssd,ssd,lpn,req);
+                    
+                    if (ssd->sp.grpgc_recon){
+                        if (sublat > NAND_READ_LATENCY){                   
+                            busy_miss = true;
+                        }
+                    }
                 }
                 ssd->total_read_pages++;
+
+                
             }
             else {
                 if (req->stime < lun->gc_endtime) {
@@ -1169,27 +1184,48 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
 
             maxlat = (sublat > maxlat) ? sublat : maxlat;   
         }
-
-        if(sub_gc){//blocked read in normal io path
-            ssd->block_read_num++;
-            for (int i = 0; i < ssd_id_cnt; i++) {
-                if (req->stime < gc_endtime_array[i]) {
-                    num_concurrent_gcs++;
+        if(ssd->sp.grpgc_recon)
+        {
+            int this_ssd_id = ssd->id;
+            for (int i=0; i < ssd_id_cnt; i++)
+            {
+                if (i == this_ssd_id){
+                    continue;
+                }
+                if (req->stime < gc_endtime_array[i]){
+                    one_recons = false;
+                    break;
                 }
             }
-            ssd->num_reads_blocked_by_gc[num_concurrent_gcs]++;
         }
 
-        if (ssd->sp.fast_fail)
-        {
-            if (max_gcrt > 0){
-                ssd->reads_reblk++;//reconstruct read io blocked by gc for the second time
-            }      
-            ssd->reads_recon++;  //reconstruct read io finished normally
+        if (ssd->sp.buffer_read && ssd->sp.grpgc_recon && one_recons && busy_miss){
+            /*gql-结合ioda的降低读的方案去fast-fail掉请求，实现重构*/
+            req->nvm_usrflag = set_low32(req->nvm_usrflag, NVME_FAILED_REQ);
+            return 0;
         }
+        else {
+            if(sub_gc){//blocked read in normal io path
+                ssd->block_read_num++;
+                for (int i = 0; i < ssd_id_cnt; i++) {
+                    if (req->stime < gc_endtime_array[i]) {
+                        num_concurrent_gcs++;
+                    }
+                }
+                ssd->num_reads_blocked_by_gc[num_concurrent_gcs]++;
+            }
 
-        
-        return maxlat;
+            if (ssd->sp.fast_fail)
+            {
+                if (max_gcrt > 0){
+                    ssd->reads_reblk++;//reconstruct read io blocked by gc for the second time
+                }      
+                ssd->reads_recon++;  //reconstruct read io finished normally
+            }
+
+
+            return maxlat;
+        }
     }
 }
 
@@ -1432,7 +1468,7 @@ static uint64_t busy_buffer_read(struct ssd *ssd, struct ssd *target_ssd, uint64
     else
     {
         // lat += read_from_buffer(ssd, target_ssd, lpn, req);/* read the buffered data*/
-        if(req->stime < gc_endtime_array[ssd->bk_id]){
+        if(req->stime < gc_endtime_array[ssd->bk_id]){ //gql-buffer bage cannot respond for backup ssd is in gc
             ssd->buffer_block_pages++;
         }
         if (req->stime < gc_endtime_array[ssd->bk_id] && ssd->sp.gc_streering)
