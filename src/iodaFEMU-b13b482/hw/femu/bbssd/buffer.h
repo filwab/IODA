@@ -15,3 +15,6 @@ bool  dram_delete_buffer_node(tAVLTree * buffer);
 
 //检查缓存空间，更新buffer_full_flag
 int  check_buffer_page(tAVLTree * buffer);
+
+//更新缓存空间大小，并根据大小更新缓存中的数据。
+int update_buffer_page(tAVLTree * buffer , uint64_t new_capacity);

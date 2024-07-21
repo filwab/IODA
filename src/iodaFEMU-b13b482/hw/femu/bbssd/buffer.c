@@ -86,3 +86,16 @@ int  check_buffer_page(tAVLTree * buffer)
 	}
 	return buffer->buffer_full_flag;
 }
+
+/*- 根据new_capacity更新ssd的缓存空间*/
+int update_buffer_page(tAVLTree * buffer , uint64_t new_capacity)
+{
+	buffer->max_buffer_page = (unsigned int ) new_capacity / 4096;
+	while (buffer->buffer_page_count > buffer->max_buffer_page) 
+	{
+		dram_delete_buffer_node(buffer);
+	}
+
+	check_buffer_page(buffer);
+	return buffer->buffer_full_flag;
+}

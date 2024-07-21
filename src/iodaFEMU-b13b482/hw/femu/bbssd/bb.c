@@ -159,6 +159,17 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
                 n->devname);
         break;
 
+    case BACKUP_SPACE_ADD:
+        ssd->dram.dram_capacity += 20*1024*1024;
+        update_buffer_page(ssd->dram.buffer , ssd->dram.dram_capacity);
+        femu_log("%s, Backup Space : %d M !\n", n->devname,(int)ssd->dram.dram_capacity/(1024*1024));
+        break;
+
+    case BACKUP_SPACE_DEL:
+        ssd->dram.dram_capacity -= 20*1024*1024;
+        update_buffer_page(ssd->dram.buffer , ssd->dram.dram_capacity);
+        femu_log("%s, Backup Space : %d M !\n", n->devname,(int)ssd->dram.dram_capacity/(1024*1024));
+        break;
 
     
     case FEMU_NAND_UTILIZATION_LOG:
@@ -168,14 +179,15 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
         break;
 
     case FEMU_PRINT_CONFIG:
-        femu_log("%s,FEMU Config: SYNC_GC: %d, FAST_FAIL: %d, BUFFER_READ: %d, GROUP_GC: %d,GC_STEERING: %d,grpgc_recon: %d\n", 
+        femu_log("%s,Config: SYNC_gc: %d, F_FAIL: %d, BUF_R: %d, GRP_GC: %d,STEERING: %d,grpgc_recon: %d,cache: %d M\n", 
                     n->devname,
                     ssd->sp.enable_gc_sync,
                     ssd->sp.fast_fail,
                     ssd->sp.buffer_read,
                     ssd->sp.group_gc_sync,
                     ssd->sp.gc_streering,
-                    ssd->sp.grpgc_recon);
+                    ssd->sp.grpgc_recon,
+                    (int)ssd->dram.dram_capacity/(1024*1024));
         break;
 
     case FEMU_PRINT_AND_RESET_COUNTERS:

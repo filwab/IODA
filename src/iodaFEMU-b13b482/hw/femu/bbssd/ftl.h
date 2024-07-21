@@ -78,7 +78,11 @@ enum {
 
     GC_STEERING_MOD = 29,
 
-    GRPGC_RECON_MOD = 30
+    GRPGC_RECON_MOD = 30,
+
+    BACKUP_SPACE_ADD = 40,
+
+    BACKUP_SPACE_DEL = 41
 };
 
 

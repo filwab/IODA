@@ -1204,7 +1204,8 @@ static uint64_t ssd_read(struct ssd *ssd, NvmeRequest *req)
             req->nvm_usrflag = set_low32(req->nvm_usrflag, NVME_FAILED_REQ);
             return 0;
         }
-        else {
+        else 
+        {
             if(sub_gc){//blocked read in normal io path
                 ssd->block_read_num++;
                 for (int i = 0; i < ssd_id_cnt; i++) {
